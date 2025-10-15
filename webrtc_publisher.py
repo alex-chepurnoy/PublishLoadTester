@@ -71,8 +71,6 @@ class WebRTCPublisher:
         
         # WebRTC components
         self.pc: Optional[RTCPeerConnection] = None
-        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
-        self.session: Optional[aiohttp.ClientSession] = None
         
         # Media components
         self.media_player: Optional[MediaPlayer] = None
@@ -200,27 +198,32 @@ class WebRTCPublisher:
             raise
     
     async def connect_wowza_signaling(self) -> Dict[str, Any]:
-        """Connect to Wowza Engine WebRTC signaling"""
+        """Connect to Wowza Engine WebRTC signaling via WebSocket"""
         
-        # Parse Wowza signaling URL
-        signaling_url = f"{self.url}/webrtc-session.json"
+        # Parse application name from URL
+        # URL format: https://server:port/application
+        application_name = self.url.rstrip('/').split('/')[-1]
+        
+        # Build signaling URL - Convert https:// to wss://
+        # Wowza uses WebSocket (wss://) for signaling
+        signaling_url = self.url.replace('https://', 'wss://').replace('http://', 'ws://')
+        signaling_url = f"{signaling_url.rstrip('/')}/webrtc-session.json"
         
         self.logger.info(f"Connecting to Wowza signaling: {signaling_url}")
+        self.logger.info(f"Application: {application_name}, Stream: {self.stream_name}")
         
         # Prepare signaling request
         signaling_request = {
+            "direction": "publish",
             "command": "sendOffer",
             "streamInfo": {
-                "applicationName": "webrtc",
+                "applicationName": application_name,
                 "streamName": self.stream_name,
                 "sessionId": self.session_id
             }
         }
         
         try:
-            # Create HTTP session
-            self.session = aiohttp.ClientSession()
-            
             # Create offer
             offer = await self.pc.createOffer()
             await self.pc.setLocalDescription(offer)
@@ -233,21 +236,19 @@ class WebRTCPublisher:
             
             self.logger.debug(f"Sending offer to Wowza: {json.dumps(signaling_request, indent=2)}")
             
-            # Send signaling request
-            async with self.session.post(
-                signaling_url,
-                json=signaling_request,
-                headers={"Content-Type": "application/json"}
-            ) as response:
+            # Connect via WebSocket
+            async with websockets.connect(signaling_url, ssl=True) as ws:
+                # Send signaling request
+                await ws.send(json.dumps(signaling_request))
+                self.logger.debug("Offer sent, waiting for response...")
                 
-                if response.status == 200:
-                    signaling_response = await response.json()
-                    self.logger.info("Received signaling response from Wowza")
-                    self.logger.debug(f"Signaling response: {json.dumps(signaling_response, indent=2)}")
-                    return signaling_response
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Signaling failed: HTTP {response.status} - {error_text}")
+                # Receive signaling response
+                response_text = await ws.recv()
+                signaling_response = json.loads(response_text)
+                
+                self.logger.info("Received signaling response from Wowza")
+                self.logger.debug(f"Signaling response: {json.dumps(signaling_response, indent=2)}")
+                return signaling_response
                     
         except Exception as e:
             self.logger.error(f"Wowza signaling failed: {e}")
@@ -335,11 +336,6 @@ class WebRTCPublisher:
             if self.media_player:
                 # Note: MediaPlayer doesn't have an async close method
                 self.logger.debug("Stopped media player")
-            
-            # Close HTTP session
-            if self.session:
-                await self.session.close()
-                self.logger.debug("Closed HTTP session")
                 
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")

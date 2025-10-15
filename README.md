@@ -209,16 +209,28 @@ Stream Name: test
 
 **Encoding Mode**: Single encode, multiple outputs (efficient)
 
-### WebRTC
+### WebRTC (Wowza Format)
 ```bash
-# URL Format (full URL with application)
+# URL Format (full URL with application - HTTPS required)
 https://server:port/application
 
 # Example Configuration
 Server URL: https://192.168.1.100:8443/webrtc
 Stream Name: test
-# Results in streams: test001, test002, test003, etc.
+
+# Signaling endpoint used (automatic WebSocket connection):
+# wss://192.168.1.100:8443/webrtc/webrtc-session.json
+
+# Streams published:
+# Application: webrtc, Stream names: test001, test002, test003, etc.
 ```
+
+**Note**: 
+- WebRTC requires HTTPS (SSL/TLS certificate on Wowza server)
+- The script automatically extracts the application name from the URL
+- Signaling uses **WebSocket (wss://)** to `/webrtc-session.json` endpoint
+- Each stream maintains its own WebRTC peer connection
+- User provides `https://` URL, script converts to `wss://` for signaling
 
 **Encoding Mode**: Multiple processes (one per stream) - required for WebRTC
 
