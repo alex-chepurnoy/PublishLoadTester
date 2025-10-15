@@ -201,13 +201,12 @@ class WebRTCPublisher:
         """Connect to Wowza Engine WebRTC signaling via WebSocket"""
         
         # Parse application name from URL
-        # URL format: https://server:port/application
+        # URL format: wss://domain:port/application
         application_name = self.url.rstrip('/').split('/')[-1]
         
-        # Build signaling URL - Convert https:// to wss://
-        # Wowza uses WebSocket (wss://) for signaling
-        signaling_url = self.url.replace('https://', 'wss://').replace('http://', 'ws://')
-        signaling_url = f"{signaling_url.rstrip('/')}/webrtc-session.json"
+        # Build signaling URL
+        # User provides wss:// directly, just append endpoint
+        signaling_url = f"{self.url.rstrip('/')}/webrtc-session.json"
         
         self.logger.info(f"Connecting to Wowza signaling: {signaling_url}")
         self.logger.info(f"Application: {application_name}, Stream: {self.stream_name}")

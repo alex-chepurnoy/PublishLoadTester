@@ -184,8 +184,8 @@ validate_url() {
             fi
             ;;
         "webrtc")
-            if [[ ! "$url" =~ ^https?://.+/.+ ]]; then
-                log_error "VALIDATION" "WebRTC URL must be in format: http(s)://server:port/application"
+            if [[ ! "$url" =~ ^wss?://.+/.+ ]]; then
+                log_error "VALIDATION" "WebRTC URL must be in format: wss://domain:port/application"
                 return 1
             fi
             ;;
@@ -340,17 +340,29 @@ get_server_url() {
             
         "webrtc")
             echo -e "${BLUE}WebRTC Server Configuration:${NC}"
-            echo "Server format: http(s)://[IP]:[port]/[application]"
-            echo "Example: https://192.168.1.100:8443/live"
+            echo "Server format: wss://[domain]:[port]"
+            echo "Example: wss://wowza.example.com:443"
             echo
             while true; do
-                read -p "Enter WebRTC server URL (including application): " SERVER_URL
-                if [[ "$SERVER_URL" =~ ^https?://.+/.+ ]]; then
+                read -p "Enter WebRTC signaling server (wss://): " server
+                if [[ "$server" =~ ^wss?://[^/]+$ ]]; then
                     break
                 else
-                    echo "Invalid format. Must be http(s)://server:port/application"
+                    echo "Invalid format. Must be wss://domain:port (without path)"
                 fi
             done
+            
+            echo
+            while true; do
+                read -p "Enter application name: " application
+                if [[ -n "$application" ]]; then
+                    break
+                else
+                    echo "Application name cannot be empty"
+                fi
+            done
+            
+            SERVER_URL="${server}/${application}"
             ;;
     esac
     
@@ -766,7 +778,7 @@ show_help() {
     echo "  RTMP:   rtmp://server:port/application"
     echo "  RTSP:   rtsp://server:port/application"
     echo "  SRT:    srt://server:port?streamid=application (Wowza format used automatically)"
-    echo "  WebRTC: https://server:port/application"
+    echo "  WebRTC: wss://domain:port/application"
     echo
     echo "Note: SRT streams will be published using Wowza's format:"
     echo "      srt://server:port?streamid=#!::m=publish,r=application/_definst_/stream-name"
@@ -782,6 +794,10 @@ show_help() {
     echo "  # Command line mode - SRT (provide application name, Wowza format applied automatically)"
     echo "  $0 --protocol srt --bitrate 3000 --url 'srt://192.168.1.100:9999?streamid=live' \\"
     echo "     --connections 5 --stream-name 'stream' --duration 60"
+    echo
+    echo "  # Command line mode - WebRTC"
+    echo "  $0 --protocol webrtc --bitrate 3500 --url 'wss://wowza.example.com:443/webrtc' \\"
+    echo "     --connections 5 --ramp-time 1 --stream-name 'test' --duration 10"
 }
 
 show_version() {
