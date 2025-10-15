@@ -417,10 +417,11 @@ build_stream_url() {
             ;;
         "srt")
             if [[ "$SERVER_URL" =~ \?streamid= ]]; then
-                # Append stream name to the existing streamid
-                local base_streamid=$(echo "$SERVER_URL" | sed 's/.*streamid=\([^&]*\).*/\1/')
+                # Extract application name from streamid parameter
                 local server_base=$(echo "$SERVER_URL" | sed 's/\?streamid=.*//')
-                destination_url="${server_base}?streamid=${base_streamid}/${stream_name}"
+                local application=$(echo "$SERVER_URL" | sed 's/.*streamid=\([^&]*\).*/\1/')
+                # Wowza format: streamid=#!::m=publish,r=application/_definst_/stream-name
+                destination_url="${server_base}?streamid=#!::m=publish,r=${application}/_definst_/${stream_name}"
             else
                 destination_url="${SERVER_URL}?streamid=${stream_name}"
             fi
@@ -764,8 +765,11 @@ show_help() {
     echo "URL Formats by Protocol:"
     echo "  RTMP:   rtmp://server:port/application"
     echo "  RTSP:   rtsp://server:port/application"
-    echo "  SRT:    srt://server:port?streamid=application"
+    echo "  SRT:    srt://server:port?streamid=application (Wowza format used automatically)"
     echo "  WebRTC: https://server:port/application"
+    echo
+    echo "Note: SRT streams will be published using Wowza's format:"
+    echo "      srt://server:port?streamid=#!::m=publish,r=application/_definst_/stream-name"
     echo
     echo "Examples:"
     echo "  # Interactive mode"
@@ -775,7 +779,7 @@ show_help() {
     echo "  $0 --protocol rtmp --bitrate 2000 --url 'rtmp://192.168.1.100:1935/live' \\"
     echo "     --connections 10 --ramp-time 5 --stream-name 'test' --duration 30"
     echo
-    echo "  # Command line mode - SRT"
+    echo "  # Command line mode - SRT (provide application name, Wowza format applied automatically)"
     echo "  $0 --protocol srt --bitrate 3000 --url 'srt://192.168.1.100:9999?streamid=live' \\"
     echo "     --connections 5 --stream-name 'stream' --duration 60"
 }

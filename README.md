@@ -190,7 +190,7 @@ Stream Name: test
 
 **Encoding Mode**: Single encode, multiple outputs (efficient)
 
-### SRT
+### SRT (Wowza Format)
 ```bash
 # URL Format (streamid with application only)
 srt://server:port?streamid=application
@@ -198,8 +198,14 @@ srt://server:port?streamid=application
 # Example Configuration
 Server URL: srt://192.168.1.100:9999?streamid=live
 Stream Name: test
-# Results in: srt://server:9999?streamid=live/test001, etc.
+
+# Actual Wowza publish URLs generated (automatic):
+# srt://192.168.1.100:9999?streamid=#!::m=publish,r=live/_definst_/test001
+# srt://192.168.1.100:9999?streamid=#!::m=publish,r=live/_definst_/test002
+# srt://192.168.1.100:9999?streamid=#!::m=publish,r=live/_definst_/test003
 ```
+
+**Note**: The script automatically converts your simple `streamid=application` format into Wowza's required publish format: `streamid=#!::m=publish,r=application/_definst_/stream-name`
 
 **Encoding Mode**: Single encode, multiple outputs (efficient)
 
