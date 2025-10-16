@@ -222,10 +222,10 @@ select_protocol() {
 get_resolution() {
     echo
     echo -e "${BLUE}Select Video Resolution:${NC}"
-    echo "1) 4K (3840x2160)     - Recommended bitrate: 8000-20000 kbps"
-    echo "2) 1080p (1920x1080)  - Recommended bitrate: 2000-8000 kbps"
-    echo "3) 720p (1280x720)    - Recommended bitrate: 1000-4000 kbps"
-    echo "4) 360p (640x360)     - Recommended bitrate: 400-1500 kbps"
+    echo "1) 4K (3840x2160)     - Recommended: H.264: 10000-25000 kbps, H.265: 5000-15000 kbps"
+    echo "2) 1080p (1920x1080)  - Recommended: H.264: 3000-8000 kbps, H.265: 1500-5000 kbps"
+    echo "3) 720p (1280x720)    - Recommended: H.264: 1500-4000 kbps, H.265: 800-2500 kbps"
+    echo "4) 360p (640x360)     - Recommended: H.264: 500-1500 kbps, H.265: 300-1000 kbps"
     echo
     
     while true; do
@@ -235,8 +235,8 @@ get_resolution() {
                 RESOLUTION="4k"
                 VIDEO_WIDTH=3840
                 VIDEO_HEIGHT=2160
-                MIN_BITRATE=8000
-                MAX_BITRATE=20000
+                MIN_BITRATE=3000
+                MAX_BITRATE=50000
                 DEFAULT_BITRATE=12000
                 break 
                 ;;
@@ -244,8 +244,8 @@ get_resolution() {
                 RESOLUTION="1080p"
                 VIDEO_WIDTH=1920
                 VIDEO_HEIGHT=1080
-                MIN_BITRATE=2000
-                MAX_BITRATE=8000
+                MIN_BITRATE=1000
+                MAX_BITRATE=15000
                 DEFAULT_BITRATE=4000
                 break 
                 ;;
@@ -253,17 +253,17 @@ get_resolution() {
                 RESOLUTION="720p"
                 VIDEO_WIDTH=1280
                 VIDEO_HEIGHT=720
-                MIN_BITRATE=1000
-                MAX_BITRATE=4000
-                DEFAULT_BITRATE=2500
+                MIN_BITRATE=500
+                MAX_BITRATE=8000
+                DEFAULT_BITRATE=2000
                 break 
                 ;;
             4) 
                 RESOLUTION="360p"
                 VIDEO_WIDTH=640
                 VIDEO_HEIGHT=360
-                MIN_BITRATE=400
-                MAX_BITRATE=1500
+                MIN_BITRATE=200
+                MAX_BITRATE=3000
                 DEFAULT_BITRATE=800
                 break 
                 ;;
@@ -788,10 +788,11 @@ show_help() {
     echo "  -v, --version               Show version information"
     echo
     echo "Resolution Bitrate Recommendations:"
-    echo "  4K (3840x2160):     8000-20000 kbps"
-    echo "  1080p (1920x1080):  2000-8000 kbps"
-    echo "  720p (1280x720):    1000-4000 kbps"
-    echo "  360p (640x360):     400-1500 kbps"
+    echo "  4K (3840x2160):     H.264: 10000-25000 kbps, H.265: 5000-15000 kbps"
+    echo "  1080p (1920x1080):  H.264: 3000-8000 kbps,   H.265: 1500-5000 kbps"
+    echo "  720p (1280x720):    H.264: 1500-4000 kbps,   H.265: 800-2500 kbps"
+    echo "  360p (640x360):     H.264: 500-1500 kbps,    H.265: 300-1000 kbps"
+    echo "  (Tool accepts 200-50000 kbps for maximum flexibility)"
     echo
     echo "URL Formats by Protocol:"
     echo "  RTMP:   rtmp://server:port/application"
@@ -972,29 +973,29 @@ main() {
             "4k")
                 VIDEO_WIDTH=3840
                 VIDEO_HEIGHT=2160
-                MIN_BITRATE=8000
-                MAX_BITRATE=20000
+                MIN_BITRATE=3000
+                MAX_BITRATE=50000
                 BITRATE="${BITRATE:-12000}"
                 ;;
             "1080p")
                 VIDEO_WIDTH=1920
                 VIDEO_HEIGHT=1080
-                MIN_BITRATE=2000
-                MAX_BITRATE=8000
+                MIN_BITRATE=1000
+                MAX_BITRATE=15000
                 BITRATE="${BITRATE:-4000}"
                 ;;
             "720p")
                 VIDEO_WIDTH=1280
                 VIDEO_HEIGHT=720
-                MIN_BITRATE=1000
-                MAX_BITRATE=4000
-                BITRATE="${BITRATE:-2500}"
+                MIN_BITRATE=500
+                MAX_BITRATE=8000
+                BITRATE="${BITRATE:-2000}"
                 ;;
             "360p")
                 VIDEO_WIDTH=640
                 VIDEO_HEIGHT=360
-                MIN_BITRATE=400
-                MAX_BITRATE=1500
+                MIN_BITRATE=200
+                MAX_BITRATE=3000
                 BITRATE="${BITRATE:-800}"
                 ;;
             *)

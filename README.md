@@ -143,14 +143,14 @@ For automation or repeated tests:
 
 #### Resolution and Bitrate Recommendations
 
-| Resolution | Dimensions | Recommended Bitrate Range |
-|------------|------------|---------------------------|
-| 4K | 3840x2160 | 8000-20000 kbps |
-| 1080p | 1920x1080 | 2000-8000 kbps |
-| 720p | 1280x720 | 1000-4000 kbps |
-| 360p | 640x360 | 400-1500 kbps |
+| Resolution | Dimensions | H.264 Bitrate Range | H.265 Bitrate Range |
+|------------|------------|---------------------|---------------------|
+| 4K | 3840x2160 | 10000-25000 kbps | 5000-15000 kbps |
+| 1080p | 1920x1080 | 3000-8000 kbps | 1500-5000 kbps |
+| 720p | 1280x720 | 1500-4000 kbps | 800-2500 kbps |
+| 360p | 640x360 | 500-1500 kbps | 300-1000 kbps |
 
-**Note:** H.265 can achieve the same quality as H.264 at approximately 50% lower bitrate.
+**Note:** H.265 achieves similar quality as H.264 at approximately 50% lower bitrate. The tool allows bitrate ranges from 200 kbps to 50000 kbps for maximum flexibility.
 
 ### Protocol-Specific Examples
 
@@ -378,10 +378,11 @@ Streams are generated using FFmpeg with the following settings:
   - H.264 (libx264) - Widely compatible, good compression
   - H.265 (libx265) - Better compression, ~50% lower bitrate for same quality
 - **Resolutions Available**:
-  - 4K (3840x2160) - Recommended: 8000-20000 kbps
-  - 1080p (1920x1080) - Recommended: 2000-8000 kbps
-  - 720p (1280x720) - Recommended: 1000-4000 kbps
-  - 360p (640x360) - Recommended: 400-1500 kbps
+  - 4K (3840x2160) - H.264: 10000-25000 kbps, H.265: 5000-15000 kbps
+  - 1080p (1920x1080) - H.264: 3000-8000 kbps, H.265: 1500-5000 kbps
+  - 720p (1280x720) - H.264: 1500-4000 kbps, H.265: 800-2500 kbps
+  - 360p (640x360) - H.264: 500-1500 kbps, H.265: 300-1000 kbps
+- **Flexible Range**: Accepts bitrates from 200 kbps to 50000 kbps
 - **Frame Rate**: 30 fps
 - **GOP Size**: 60 frames (2 seconds at 30fps)
 - **Keyframe Interval**: 60 frames minimum
