@@ -183,7 +183,7 @@ warn() {
             info "All required codecs and features are now available"
             echo
             info "You can now run the dependency checker:"
-            info "  ./check_dependencies.sh basic"
+            info "  ./scripts/check_dependencies.sh"
             echo
             info "Or run the main stream load tester:"
             info "  ./stream_load_tester.sh"
@@ -471,7 +471,7 @@ main() {
         info "All required codecs and features are now available"
         echo
         info "You can now run the dependency checker:"
-        info "  ./check_dependencies.sh basic"
+        info "  ./scripts/check_dependencies.sh"
         echo
         info "Or run the main stream load tester:"
         info "  ./stream_load_tester.sh"

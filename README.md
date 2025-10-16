@@ -73,8 +73,8 @@ If you prefer to install dependencies manually or want more control:
 
 2. **Check dependencies**:
    ```bash
-   chmod +x check_dependencies.sh
-   ./check_dependencies.sh
+   chmod +x scripts/check_dependencies.sh
+   ./scripts/check_dependencies.sh
    ```
 
 3. **Install FFmpeg manually** (if needed):
@@ -294,7 +294,7 @@ AUDIO_BITRATE=128k          # Audio bitrate
 
 ### Check Dependencies
 ```bash
-./check_dependencies.sh
+./scripts/check_dependencies.sh
 ```
 
 ### FFmpeg Issues
@@ -339,13 +339,13 @@ DEBUG=true ./stream_load_tester.sh
 ```
 PublishLoadTester/
 ├── stream_load_tester.sh          # Main script
-├── check_dependencies.sh          # Dependency checker
 ├── README.md                      # This file
 ├── CHANGELOG.md                   # Version history
 ├── config/
 │   └── default.conf              # Default configuration
 ├── logs/                         # Log files (auto-created)
 ├── scripts/
+│   ├── check_dependencies.sh    # Dependency checker
 │   ├── install.sh               # Installation script
 │   ├── cleanup.sh               # Cleanup orphaned processes
 │   ├── ensure_ffmpeg_requirements.sh  # Auto-install FFmpeg

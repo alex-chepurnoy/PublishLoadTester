@@ -50,7 +50,7 @@ make_scripts_executable() {
     info "Making scripts executable..."
     
     chmod +x "$PROJECT_ROOT/stream_load_tester.sh"
-    chmod +x "$PROJECT_ROOT/check_dependencies.sh"
+    chmod +x "$SCRIPT_DIR/check_dependencies.sh"
     chmod +x "$SCRIPT_DIR/cleanup.sh"
     chmod +x "$SCRIPT_DIR/ensure_ffmpeg_requirements.sh"
     chmod +x "$SCRIPT_DIR/fix_ffmpeg_codecs.sh"
@@ -71,12 +71,12 @@ create_symlinks() {
     fi
     
     sudo ln -sf "$PROJECT_ROOT/stream_load_tester.sh" /usr/local/bin/stream-load-tester
-    sudo ln -sf "$PROJECT_ROOT/check_dependencies.sh" /usr/local/bin/stream-load-tester-check
+    sudo ln -sf "$SCRIPT_DIR/check_dependencies.sh" /usr/local/bin/stream-load-tester-check
     sudo ln -sf "$SCRIPT_DIR/cleanup.sh" /usr/local/bin/stream-load-tester-cleanup
     
     info "Created symlinks:"
     info "  stream-load-tester -> $PROJECT_ROOT/stream_load_tester.sh"
-    info "  stream-load-tester-check -> $PROJECT_ROOT/check_dependencies.sh"
+    info "  stream-load-tester-check -> $SCRIPT_DIR/check_dependencies.sh"
     info "  stream-load-tester-cleanup -> $SCRIPT_DIR/cleanup.sh"
 }
 
@@ -195,7 +195,9 @@ main() {
         echo
         info "Stream Load Tester is ready to use!"
         info "Run './stream_load_tester.sh' to start testing"
-        info "Run './check_dependencies.sh' to verify setup"
+        info "Run './scripts/check_dependencies.sh' to verify setup"
+        
+    else
         
     else
         error "Installation completed but verification failed"

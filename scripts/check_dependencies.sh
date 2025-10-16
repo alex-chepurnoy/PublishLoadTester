@@ -6,7 +6,7 @@
 # Description: Validates required dependencies for the stream load tester
 #              (Bash and FFmpeg with required codecs)
 #
-# Usage: ./check_dependencies.sh
+# Usage: ./scripts/check_dependencies.sh
 #
 # Author: Stream Load Tester Project
 # Version: 3.0

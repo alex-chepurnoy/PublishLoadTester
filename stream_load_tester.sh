@@ -907,7 +907,7 @@ main() {
     # Check dependencies first
     log_info "MAIN" "Checking dependencies..."
     
-    if ! "${SCRIPT_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
+    if ! "${SCRIPTS_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
         log_warn "MAIN" "Dependencies not met. Running installation script..."
         echo
         echo -e "${YELLOW}Dependencies are missing or incomplete.${NC}"
@@ -925,7 +925,7 @@ main() {
         log_info "MAIN" "Installation completed successfully"
         
         # Re-check dependencies after installation
-        if ! "${SCRIPT_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
+        if ! "${SCRIPTS_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
             log_error "MAIN" "Dependencies still not met after installation"
             log_error "MAIN" "Please check the error messages above and install missing dependencies manually"
             exit 1
