@@ -522,9 +522,11 @@ build_multi_output_ffmpeg_command() {
                 ;;
         esac
         
-        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level} -pix_fmt yuv420p"
-        cmd+=" -b:v ${BITRATE}k -g 60 -keyint_min 60 -sc_threshold 0"
-        cmd+=" -x264-params keyint=60:min-keyint=60:no-scenecut"
+        # For RTMP/FLV, ensure proper codec headers are sent (based on Wowza recommendations)
+        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level}"
+        cmd+=" -pix_fmt yuv420p -r 30 -threads 0"
+        cmd+=" -b:v ${BITRATE}k -g 60 -sc_threshold 0"
+        cmd+=" -flags +global_header"
     fi
     
     # Audio encoding based on selected codec
@@ -606,9 +608,11 @@ build_single_stream_ffmpeg_command() {
                 ;;
         esac
         
-        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level} -pix_fmt yuv420p"
-        cmd+=" -b:v ${BITRATE}k -g 60 -keyint_min 60 -sc_threshold 0"
-        cmd+=" -x264-params keyint=60:min-keyint=60:no-scenecut"
+        # For RTMP/FLV, ensure proper codec headers are sent (based on Wowza recommendations)
+        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level}"
+        cmd+=" -pix_fmt yuv420p -r 30 -threads 0"
+        cmd+=" -b:v ${BITRATE}k -g 60 -sc_threshold 0"
+        cmd+=" -flags +global_header"
     fi
     
     # Audio encoding based on selected codec
