@@ -198,8 +198,6 @@ main() {
         info "Run './scripts/check_dependencies.sh' to verify setup"
         
     else
-        
-    else
         error "Installation completed but verification failed"
         error "Please check the verification output above"
         exit 1

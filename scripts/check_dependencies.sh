@@ -25,8 +25,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-FFMPEG_HELPERS="$PROJECT_ROOT/scripts/lib/ffmpeg_checks.sh"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+FFMPEG_HELPERS="$SCRIPT_DIR/lib/ffmpeg_checks.sh"
 
 if [[ ! -f "$FFMPEG_HELPERS" ]]; then
     echo -e "${RED}Missing FFmpeg helper library at $FFMPEG_HELPERS${NC}"
