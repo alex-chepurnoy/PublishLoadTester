@@ -2,6 +2,22 @@
 
 All notable changes to the Stream Load Tester project.
 
+## [2.1.1] - 2025-10-16
+
+### Fixed
+- **H.264 encoding compatibility with Wowza Engine**
+  - Added explicit H.264 profile (baseline) for universal compatibility
+  - Added resolution-appropriate H.264 levels:
+    - 4K: Level 5.1 (supports up to 4096x2304 @ 30fps)
+    - 1080p: Level 4.0 (supports up to 1920x1080 @ 30fps)
+    - 720p: Level 3.1 (supports up to 1280x720 @ 30fps)
+    - 360p: Level 3.0 (supports up to 720x576 @ 30fps)
+  - Added pixel format specification (yuv420p) for consistent color space
+  - Disabled scene detection (`-sc_threshold 0`) to prevent unexpected keyframes
+  - Added `no-scenecut` parameter to ensure strict GOP control
+  - Fixes "H264Utils.decodeAVCC: ArrayIndexOutOfBoundsException" error in Wowza Engine
+  - Ensures proper SPS/PPS header generation for all resolutions
+
 ## [2.1.0] - 2025-10-16
 
 ### Added

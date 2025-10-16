@@ -504,7 +504,27 @@ build_multi_output_ffmpeg_command() {
     if [[ "$VIDEO_CODEC" == "h265" ]]; then
         cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
     else
-        cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60"
+        # H.264 encoding with Wowza-compatible settings
+        # Select appropriate level based on resolution
+        local h264_level="3.1"  # Default for 720p and below
+        case "${RESOLUTION,,}" in
+            "4k")
+                h264_level="5.1"  # Required for 4K (3840x2160)
+                ;;
+            "1080p")
+                h264_level="4.0"  # Optimal for 1080p
+                ;;
+            "720p")
+                h264_level="3.1"  # Standard for 720p
+                ;;
+            "360p")
+                h264_level="3.0"  # Sufficient for 360p
+                ;;
+        esac
+        
+        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level} -pix_fmt yuv420p"
+        cmd+=" -b:v ${BITRATE}k -g 60 -keyint_min 60 -sc_threshold 0"
+        cmd+=" -x264-params keyint=60:min-keyint=60:no-scenecut"
     fi
     
     # Audio encoding based on selected codec
@@ -568,7 +588,27 @@ build_single_stream_ffmpeg_command() {
     if [[ "$VIDEO_CODEC" == "h265" ]]; then
         cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
     else
-        cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60"
+        # H.264 encoding with Wowza-compatible settings
+        # Select appropriate level based on resolution
+        local h264_level="3.1"  # Default for 720p and below
+        case "${RESOLUTION,,}" in
+            "4k")
+                h264_level="5.1"  # Required for 4K (3840x2160)
+                ;;
+            "1080p")
+                h264_level="4.0"  # Optimal for 1080p
+                ;;
+            "720p")
+                h264_level="3.1"  # Standard for 720p
+                ;;
+            "360p")
+                h264_level="3.0"  # Sufficient for 360p
+                ;;
+        esac
+        
+        cmd+=" -c:v libx264 -preset veryfast -profile:v baseline -level ${h264_level} -pix_fmt yuv420p"
+        cmd+=" -b:v ${BITRATE}k -g 60 -keyint_min 60 -sc_threshold 0"
+        cmd+=" -x264-params keyint=60:min-keyint=60:no-scenecut"
     fi
     
     # Audio encoding based on selected codec
