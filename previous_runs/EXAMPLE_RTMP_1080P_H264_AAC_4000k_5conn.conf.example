@@ -1,0 +1,14 @@
+# Stream Load Tester Configuration - Example
+# This is an example of a saved test configuration
+# Configurations are automatically created when you save a test run
+# You can also manually create or edit configuration files
+
+PROTOCOL="rtmp"
+RESOLUTION="1080p"
+VIDEO_CODEC="h264"
+AUDIO_CODEC="aac"
+BITRATE="4000"
+SERVER_URL="rtmp://192.168.1.100:1935/live"
+NUM_CONNECTIONS="5"
+STREAM_NAME="test"
+DURATION="30"

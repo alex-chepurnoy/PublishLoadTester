@@ -94,7 +94,54 @@ Simply run the script without arguments:
 
 **Note:** The script will automatically check and install dependencies on first run if needed.
 
-You'll be prompted to configure:
+#### Previous Test Runs
+
+On startup, if you have previously saved test configurations, the tool will display a menu:
+
+```
+PREVIOUS TEST RUNS
+==========================================
+
+Found 3 previous test configuration(s):
+
+  1. RTMP_1080P_H264_AAC_4000k_5conn_ProductionTest
+  2. SRT_4K_H265_OPUS_8000k_10conn
+  3. RTSP_720P_H264_AAC_2500k_3conn_LabTest
+
+  0. Start new test
+
+Select a configuration (0-3):
+```
+
+You can:
+- **Select a previous configuration** to view its details and re-run it
+- **Modify server details** (URL, app name, stream name) before running
+- **Start a new test** if you don't want to use saved configurations
+
+#### Saving Test Configurations
+
+After a successful test completes, you'll be prompted to save the configuration:
+
+```
+SAVE TEST CONFIGURATION
+==========================================
+
+Would you like to save this test configuration for future use? (y/N)
+```
+
+If you choose to save:
+1. An **auto-generated name** is created based on your test parameters:
+   - Format: `PROTOCOL_RESOLUTION_VIDEOCODEC_AUDIOCODEC_BITRATE_CONNECTIONS`
+   - Example: `RTMP_1080P_H264_AAC_4000k_5conn`
+
+2. You can **append custom text** to make it more descriptive:
+   - Example: `RTMP_1080P_H264_AAC_4000k_5conn_ProductionTest`
+
+Saved configurations are stored in `previous_runs/` and can be reused in future sessions.
+
+#### Interactive Configuration Prompts
+
+If starting a new test, you'll be prompted to configure:
 
 1. **Protocol** - Choose RTMP, RTSP, or SRT
 2. **Resolution** - Choose 4K, 1080p, 720p, or 360p with recommended bitrates
@@ -344,6 +391,7 @@ PublishLoadTester/
 ├── config/
 │   └── default.conf              # Default configuration
 ├── logs/                         # Log files (auto-created)
+├── previous_runs/                # Saved test configurations
 ├── scripts/
 │   ├── check_dependencies.sh    # Dependency checker
 │   ├── install.sh               # Installation script

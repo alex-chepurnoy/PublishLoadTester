@@ -2,6 +2,25 @@
 
 All notable changes to the Stream Load Tester project.
 
+## [2.1.0] - 2025-10-16
+
+### Added
+- **Save and reuse test configurations**
+  - After successful test completion, option to save configuration for future use
+  - Auto-generated configuration names based on test parameters
+  - Ability to append custom text to configuration names
+  - Saved configurations stored in `previous_runs/` directory
+- **Previous runs menu on startup**
+  - Lists all saved configurations when script starts
+  - View configuration summary before running
+  - Option to re-run with existing settings
+  - Option to modify server URL, app name, and stream name before running
+  - Quick access to frequently used test scenarios
+
+### Changed
+- Enhanced user workflow with configuration management
+- Improved interactive mode with previous run selection
+
 ## [2.0.0] - 2025-10-16
 
 ### Removed

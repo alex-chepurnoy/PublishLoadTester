@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"
 CONFIG_DIR="${SCRIPT_DIR}/config"
 SCRIPTS_DIR="${SCRIPT_DIR}/scripts"
+PREVIOUS_RUNS_DIR="${SCRIPT_DIR}/previous_runs"
 
 # Default Configuration
 DEFAULT_BITRATE=2000
@@ -736,6 +737,288 @@ monitor_test() {
     log_debug "MONITOR" "Exiting monitor_test() normally"
 }
 
+#############################################################################
+# Previous Run Management
+#############################################################################
+
+generate_config_name() {
+    # Generate automatic name based on test configuration
+    local proto="${PROTOCOL^^}"
+    local res="${RESOLUTION}"
+    local vcodec="${VIDEO_CODEC^^}"
+    local acodec="${AUDIO_CODEC^^}"
+    local bitrate="${BITRATE}k"
+    local connections="${NUM_CONNECTIONS}conn"
+    
+    echo "${proto}_${res}_${vcodec}_${acodec}_${bitrate}_${connections}"
+}
+
+save_test_configuration() {
+    echo
+    echo -e "${CYAN}=============================================================="
+    echo "                 SAVE TEST CONFIGURATION"
+    echo "==============================================================${NC}"
+    echo
+    echo "Would you like to save this test configuration for future use? (y/N)"
+    read -r save_response
+    
+    if [[ ! "$save_response" =~ ^[Yy] ]]; then
+        log_info "MAIN" "Configuration not saved"
+        return
+    fi
+    
+    # Create previous_runs directory if it doesn't exist
+    mkdir -p "$PREVIOUS_RUNS_DIR"
+    
+    # Generate automatic name
+    local auto_name=$(generate_config_name)
+    
+    echo
+    echo "Auto-generated name: ${CYAN}${auto_name}${NC}"
+    echo "Would you like to append custom text? (Leave empty to use auto-generated name)"
+    echo -n "Custom suffix: "
+    read -r custom_suffix
+    
+    local final_name="${auto_name}"
+    if [[ -n "$custom_suffix" ]]; then
+        # Remove spaces and special chars from custom suffix
+        custom_suffix=$(echo "$custom_suffix" | tr -s ' ' '_' | tr -cd '[:alnum:]_-')
+        final_name="${auto_name}_${custom_suffix}"
+    fi
+    
+    local config_file="${PREVIOUS_RUNS_DIR}/${final_name}.conf"
+    
+    # Check if file already exists
+    if [[ -f "$config_file" ]]; then
+        echo -e "${YELLOW}Configuration '${final_name}' already exists.${NC}"
+        echo "Overwrite? (y/N)"
+        read -r overwrite_response
+        if [[ ! "$overwrite_response" =~ ^[Yy] ]]; then
+            log_info "MAIN" "Configuration not saved"
+            return
+        fi
+    fi
+    
+    # Save configuration
+    cat > "$config_file" <<EOF
+# Stream Load Tester Configuration
+# Saved: $(date '+%Y-%m-%d %H:%M:%S')
+
+PROTOCOL="$PROTOCOL"
+RESOLUTION="$RESOLUTION"
+VIDEO_CODEC="$VIDEO_CODEC"
+AUDIO_CODEC="$AUDIO_CODEC"
+BITRATE="$BITRATE"
+SERVER_URL="$SERVER_URL"
+NUM_CONNECTIONS="$NUM_CONNECTIONS"
+STREAM_NAME="$STREAM_NAME"
+DURATION="$DURATION"
+EOF
+    
+    echo
+    log_info "MAIN" "Configuration saved as: ${final_name}"
+    echo -e "${GREEN}Saved to: ${config_file}${NC}"
+}
+
+list_previous_runs() {
+    if [[ ! -d "$PREVIOUS_RUNS_DIR" ]]; then
+        return 1
+    fi
+    
+    local configs=("$PREVIOUS_RUNS_DIR"/*.conf)
+    
+    # Check if any configs exist
+    if [[ ! -f "${configs[0]}" ]]; then
+        return 1
+    fi
+    
+    return 0
+}
+
+show_previous_runs_menu() {
+    echo
+    echo -e "${CYAN}=============================================================="
+    echo "                  PREVIOUS TEST RUNS"
+    echo "==============================================================${NC}"
+    echo
+    
+    local configs=("$PREVIOUS_RUNS_DIR"/*.conf)
+    local config_names=()
+    
+    for config in "${configs[@]}"; do
+        if [[ -f "$config" ]]; then
+            local basename=$(basename "$config" .conf)
+            config_names+=("$basename")
+        fi
+    done
+    
+    if [[ ${#config_names[@]} -eq 0 ]]; then
+        echo "No previous runs found."
+        return 1
+    fi
+    
+    echo "Found ${#config_names[@]} previous test configuration(s):"
+    echo
+    
+    for i in "${!config_names[@]}"; do
+        echo "  $((i+1)). ${config_names[$i]}"
+    done
+    
+    echo
+    echo "  0. Start new test"
+    echo
+    echo -n "Select a configuration (0-${#config_names[@]}): "
+    read -r selection
+    
+    if [[ "$selection" == "0" ]]; then
+        return 1
+    fi
+    
+    if [[ ! "$selection" =~ ^[0-9]+$ ]] || (( selection < 1 || selection > ${#config_names[@]} )); then
+        echo -e "${RED}Invalid selection${NC}"
+        return 1
+    fi
+    
+    local selected_config="${config_names[$((selection-1))]}"
+    load_and_run_configuration "$selected_config"
+    return 0
+}
+
+load_and_run_configuration() {
+    local config_name="$1"
+    local config_file="${PREVIOUS_RUNS_DIR}/${config_name}.conf"
+    
+    if [[ ! -f "$config_file" ]]; then
+        log_error "MAIN" "Configuration file not found: $config_file"
+        return 1
+    fi
+    
+    echo
+    echo -e "${CYAN}=============================================================="
+    echo "              CONFIGURATION PREVIEW"
+    echo "==============================================================${NC}"
+    
+    # Load configuration
+    source "$config_file"
+    
+    # Calculate VIDEO_WIDTH and VIDEO_HEIGHT from RESOLUTION
+    case "${RESOLUTION,,}" in
+        "4k")
+            VIDEO_WIDTH=3840
+            VIDEO_HEIGHT=2160
+            ;;
+        "1080p")
+            VIDEO_WIDTH=1920
+            VIDEO_HEIGHT=1080
+            ;;
+        "720p")
+            VIDEO_WIDTH=1280
+            VIDEO_HEIGHT=720
+            ;;
+        "360p")
+            VIDEO_WIDTH=640
+            VIDEO_HEIGHT=360
+            ;;
+    esac
+    
+    # Display configuration
+    echo "Protocol:           $PROTOCOL"
+    echo "Resolution:         $RESOLUTION (${VIDEO_WIDTH}x${VIDEO_HEIGHT})"
+    echo "Video Codec:        $VIDEO_CODEC"
+    echo "Audio Codec:        $AUDIO_CODEC"
+    echo "Bitrate:            ${BITRATE}k"
+    echo "Connections:        $NUM_CONNECTIONS"
+    echo "Duration:           ${DURATION}m"
+    echo
+    echo "Server URL:         $SERVER_URL"
+    echo "Stream Name:        $STREAM_NAME"
+    echo -e "${CYAN}==============================================================${NC}"
+    
+    echo
+    echo "Options:"
+    echo "  1. Run with these settings"
+    echo "  2. Change server URL, app name, and stream name"
+    echo "  0. Cancel"
+    echo
+    echo -n "Select option (0-2): "
+    read -r option
+    
+    case "$option" in
+        1)
+            # Run with existing settings
+            log_info "MAIN" "Running test with saved configuration: $config_name"
+            ;;
+        2)
+            # Modify server details
+            echo
+            echo -e "${CYAN}Update Server Configuration${NC}"
+            echo
+            
+            # Get new server URL based on protocol
+            case "${PROTOCOL,,}" in
+                "rtmp")
+                    echo "Enter new RTMP server URL (format: rtmp://server:port/application)"
+                    echo "Current: $SERVER_URL"
+                    echo -n "New URL (press Enter to keep current): "
+                    read -r new_url
+                    if [[ -n "$new_url" ]]; then
+                        SERVER_URL="$new_url"
+                    fi
+                    ;;
+                "rtsp")
+                    echo "Enter new RTSP server URL (format: rtsp://server:port/application)"
+                    echo "Current: $SERVER_URL"
+                    echo -n "New URL (press Enter to keep current): "
+                    read -r new_url
+                    if [[ -n "$new_url" ]]; then
+                        SERVER_URL="$new_url"
+                    fi
+                    ;;
+                "srt")
+                    echo "Enter new SRT server URL (format: srt://server:port?streamid=application)"
+                    echo "Current: $SERVER_URL"
+                    echo -n "New URL (press Enter to keep current): "
+                    read -r new_url
+                    if [[ -n "$new_url" ]]; then
+                        SERVER_URL="$new_url"
+                    fi
+                    ;;
+            esac
+            
+            echo
+            echo "Enter new stream name"
+            echo "Current: $STREAM_NAME"
+            echo -n "New stream name (press Enter to keep current): "
+            read -r new_stream
+            if [[ -n "$new_stream" ]]; then
+                STREAM_NAME="$new_stream"
+            fi
+            
+            echo
+            log_info "MAIN" "Updated configuration:"
+            log_info "MAIN" "  Server URL: $SERVER_URL"
+            log_info "MAIN" "  Stream Name: $STREAM_NAME"
+            ;;
+        0)
+            log_info "MAIN" "Test cancelled"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid option${NC}"
+            exit 1
+            ;;
+    esac
+    
+    # Set START_TIME and create log file
+    START_TIME=$(date +%s)
+    LOG_FILE="$LOG_DIR/stream_test_$(date +%Y%m%d_%H%M%S).log"
+    mkdir -p "$LOG_DIR"
+    touch "$LOG_FILE"
+    
+    echo
+    log_info "MAIN" "Starting test from saved configuration: $config_name"
+}
+
 print_summary() {
     local end_time=$(date +%s)
     local total_time=$((end_time - START_TIME))
@@ -945,6 +1228,17 @@ main() {
     
     log_info "MAIN" "FFmpeg configuration verified"
     
+    # Check for previous runs (only if no command line args provided)
+    if [[ -z "$PROTOCOL" ]]; then
+        if list_previous_runs; then
+            if show_previous_runs_menu; then
+                # Configuration was loaded and will be executed
+                # Skip interactive mode
+                PROTOCOL="${PROTOCOL}" # Already set by load_and_run_configuration
+            fi
+        fi
+    fi
+    
     # If running in interactive mode, get user input
     if [[ -z "$PROTOCOL" ]]; then
         select_protocol
@@ -1058,6 +1352,9 @@ main() {
     print_summary
     
     log_info "MAIN" "Stream load test completed"
+    
+    # Offer to save configuration
+    save_test_configuration
     
     # Note: cleanup() will be called automatically via the EXIT trap
     # For orphaned processes from crashes/disconnects, use: ./scripts/cleanup.sh
