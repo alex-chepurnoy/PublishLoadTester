@@ -5,11 +5,11 @@
 # 
 # Description: A comprehensive tool for testing streaming infrastructure
 #              by generating multiple concurrent streams to various protocols
-#              (RTMP, RTSP, SRT, WebRTC)
+#              (RTMP, RTSP, SRT)
 #
 # Author: Stream Load Tester Project
-# Version: 1.0
-# Date: October 15, 2025
+# Version: 2.0
+# Date: October 16, 2025
 #############################################################################
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
@@ -24,7 +24,9 @@ SCRIPTS_DIR="${SCRIPT_DIR}/scripts"
 DEFAULT_BITRATE=2000
 DEFAULT_DURATION=30
 DEFAULT_CONNECTIONS=5
-DEFAULT_RAMP_TIME=2
+DEFAULT_RESOLUTION="1080p"
+DEFAULT_VIDEO_CODEC="h264"
+DEFAULT_AUDIO_CODEC="aac"
 MAX_CONNECTIONS=1000
 MAX_BITRATE=50000
 MIN_BITRATE=100
@@ -34,9 +36,13 @@ PROTOCOL=""
 BITRATE=""
 SERVER_URL=""
 NUM_CONNECTIONS=""
-RAMP_TIME=""
 STREAM_NAME=""
 DURATION=""
+RESOLUTION=""
+VIDEO_CODEC=""
+AUDIO_CODEC=""
+VIDEO_WIDTH=""
+VIDEO_HEIGHT=""
 LOG_FILE=""
 PIDS=()
 START_TIME=""
@@ -135,6 +141,7 @@ cleanup() {
     
     log_info "MAIN" "Cleanup completed"
     echo -e "${GREEN}Test completed. Check logs at: ${LOG_FILE}${NC}"
+    echo -e "${BLUE}Tip: For orphaned processes from crashes, run: ./scripts/cleanup.sh${NC}"
 }
 
 #############################################################################
@@ -183,12 +190,6 @@ validate_url() {
                 return 1
             fi
             ;;
-        "webrtc")
-            if [[ ! "$url" =~ ^wss?://.+/.+ ]]; then
-                log_error "VALIDATION" "WebRTC URL must be in format: wss://domain:port/application"
-                return 1
-            fi
-            ;;
     esac
     
     return 0
@@ -203,39 +204,118 @@ select_protocol() {
     echo "1) RTMP"
     echo "2) RTSP"
     echo "3) SRT"
-    echo "4) WebRTC"
     echo
     
     while true; do
-        read -p "Enter choice [1-4]: " choice
+        read -p "Enter choice [1-3]: " choice
         case "$choice" in
             1) PROTOCOL="rtmp"; break ;;
             2) PROTOCOL="rtsp"; break ;;
             3) PROTOCOL="srt"; break ;;
-            4) 
-                # Check WebRTC dependencies first
-                if ! "${SCRIPT_DIR}/check_dependencies.sh" webrtc; then
-                    log_error "PROTOCOL" "WebRTC dependencies not met. Please install required components."
-                    echo "Would you like to select a different protocol? (y/n)"
-                    read -p "> " retry
-                    if [[ "$retry" =~ ^[Yy] ]]; then
-                        continue
-                    else
-                        exit 1
-                    fi
-                fi
-                PROTOCOL="webrtc"
-                break
-                ;;
-            *) echo "Invalid choice. Please enter 1-4." ;;
+            *) echo "Invalid choice. Please enter 1-3." ;;
         esac
     done
     
     log_info "INPUT" "Selected protocol: $PROTOCOL"
 }
 
+get_resolution() {
+    echo
+    echo -e "${BLUE}Select Video Resolution:${NC}"
+    echo "1) 4K (3840x2160)     - Recommended bitrate: 8000-20000 kbps"
+    echo "2) 1080p (1920x1080)  - Recommended bitrate: 2000-8000 kbps"
+    echo "3) 720p (1280x720)    - Recommended bitrate: 1000-4000 kbps"
+    echo "4) 360p (640x360)     - Recommended bitrate: 400-1500 kbps"
+    echo
+    
+    while true; do
+        read -p "Enter choice [1-4]: " choice
+        case "$choice" in
+            1) 
+                RESOLUTION="4k"
+                VIDEO_WIDTH=3840
+                VIDEO_HEIGHT=2160
+                MIN_BITRATE=8000
+                MAX_BITRATE=20000
+                DEFAULT_BITRATE=12000
+                break 
+                ;;
+            2) 
+                RESOLUTION="1080p"
+                VIDEO_WIDTH=1920
+                VIDEO_HEIGHT=1080
+                MIN_BITRATE=2000
+                MAX_BITRATE=8000
+                DEFAULT_BITRATE=4000
+                break 
+                ;;
+            3) 
+                RESOLUTION="720p"
+                VIDEO_WIDTH=1280
+                VIDEO_HEIGHT=720
+                MIN_BITRATE=1000
+                MAX_BITRATE=4000
+                DEFAULT_BITRATE=2500
+                break 
+                ;;
+            4) 
+                RESOLUTION="360p"
+                VIDEO_WIDTH=640
+                VIDEO_HEIGHT=360
+                MIN_BITRATE=400
+                MAX_BITRATE=1500
+                DEFAULT_BITRATE=800
+                break 
+                ;;
+            *) echo "Invalid choice. Please enter 1-4." ;;
+        esac
+    done
+    
+    log_info "INPUT" "Selected resolution: $RESOLUTION (${VIDEO_WIDTH}x${VIDEO_HEIGHT})"
+}
+
+get_video_codec() {
+    echo
+    echo -e "${BLUE}Select Video Codec:${NC}"
+    echo "1) H.264 (libx264) - Widely compatible, good compression"
+    echo "2) H.265 (libx265) - Better compression, lower bitrate for same quality"
+    echo
+    
+    while true; do
+        read -p "Enter choice [1-2]: " choice
+        case "$choice" in
+            1) VIDEO_CODEC="h264"; break ;;
+            2) VIDEO_CODEC="h265"; break ;;
+            *) echo "Invalid choice. Please enter 1-2." ;;
+        esac
+    done
+    
+    log_info "INPUT" "Selected video codec: $VIDEO_CODEC"
+}
+
+get_audio_codec() {
+    echo
+    echo -e "${BLUE}Select Audio Codec:${NC}"
+    echo "1) AAC - Widely compatible, good quality"
+    echo "2) Opus - Superior quality, lower bitrate"
+    echo
+    
+    while true; do
+        read -p "Enter choice [1-2]: " choice
+        case "$choice" in
+            1) AUDIO_CODEC="aac"; break ;;
+            2) AUDIO_CODEC="opus"; break ;;
+            *) echo "Invalid choice. Please enter 1-2." ;;
+        esac
+    done
+    
+    log_info "INPUT" "Selected audio codec: $AUDIO_CODEC"
+}
+
 get_bitrate() {
-    echo -e "${BLUE}Stream Configuration:${NC}"
+    echo
+    echo -e "${BLUE}Stream Bitrate Configuration:${NC}"
+    echo "Recommended range for $RESOLUTION: ${MIN_BITRATE}-${MAX_BITRATE} kbps"
     while true; do
         read -p "Enter bitrate in kbps [$DEFAULT_BITRATE]: " input
         BITRATE="${input:-$DEFAULT_BITRATE}"
@@ -337,33 +417,6 @@ get_server_url() {
             
             SERVER_URL="${server}?streamid=${application}"
             ;;
-            
-        "webrtc")
-            echo -e "${BLUE}WebRTC Server Configuration:${NC}"
-            echo "Server format: wss://[domain]:[port]"
-            echo "Example: wss://wowza.example.com:443"
-            echo
-            while true; do
-                read -p "Enter WebRTC signaling server (wss://): " server
-                if [[ "$server" =~ ^wss?://[^/]+$ ]]; then
-                    break
-                else
-                    echo "Invalid format. Must be wss://domain:port (without path)"
-                fi
-            done
-            
-            echo
-            while true; do
-                read -p "Enter application name: " application
-                if [[ -n "$application" ]]; then
-                    break
-                else
-                    echo "Application name cannot be empty"
-                fi
-            done
-            
-            SERVER_URL="${server}/${application}"
-            ;;
     esac
     
     log_info "INPUT" "Set server URL: $SERVER_URL"
@@ -380,16 +433,7 @@ get_connection_params() {
         fi
     done
     
-    while true; do
-        read -p "Ramp-up time in minutes [$DEFAULT_RAMP_TIME]: " input
-        RAMP_TIME="${input:-$DEFAULT_RAMP_TIME}"
-        
-        if validate_number "$RAMP_TIME" 1 60 "Ramp-up time"; then
-            break
-        fi
-    done
-    
-    log_info "INPUT" "Set connections: $NUM_CONNECTIONS, ramp-up: ${RAMP_TIME}m"
+    log_info "INPUT" "Set connections: $NUM_CONNECTIONS (all streams start simultaneously)"
 }
 
 get_stream_details() {
@@ -449,15 +493,26 @@ build_multi_output_ffmpeg_command() {
     
     local cmd="ffmpeg -hide_banner -loglevel error"
     cmd+=" -re"  # Read input at native frame rate (important for streaming)
-    cmd+=" -f lavfi -i testsrc2=size=1920x1080:rate=30"
+    cmd+=" -f lavfi -i testsrc2=size=${VIDEO_WIDTH}x${VIDEO_HEIGHT}:rate=30"
     cmd+=" -f lavfi -i sine=frequency=1000:sample_rate=48000"
     
     # Map both input streams (video from input 0, audio from input 1)
     cmd+=" -map 0:v -map 1:a"
     
-    # Encode once
-    cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60"
-    cmd+=" -c:a aac -b:a 128k"
+    # Video encoding based on selected codec
+    if [[ "$VIDEO_CODEC" == "h265" ]]; then
+        cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
+    else
+        cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60"
+    fi
+    
+    # Audio encoding based on selected codec
+    if [[ "$AUDIO_CODEC" == "opus" ]]; then
+        cmd+=" -c:a libopus -b:a 128k"
+    else
+        cmd+=" -c:a aac -b:a 128k"
+    fi
+    
     cmd+=" -t $((DURATION * 60))"  # Convert minutes to seconds
     
     # Get the format based on protocol
@@ -505,10 +560,23 @@ build_single_stream_ffmpeg_command() {
     
     local cmd="ffmpeg -hide_banner -loglevel error"
     cmd+=" -re"  # Read input at native frame rate
-    cmd+=" -f lavfi -i testsrc2=size=1920x1080:rate=30"
+    cmd+=" -f lavfi -i testsrc2=size=${VIDEO_WIDTH}x${VIDEO_HEIGHT}:rate=30"
     cmd+=" -f lavfi -i sine=frequency=1000:sample_rate=48000"
-    cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k"
-    cmd+=" -c:a aac -b:a 128k"
+    
+    # Video encoding based on selected codec
+    if [[ "$VIDEO_CODEC" == "h265" ]]; then
+        cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
+    else
+        cmd+=" -c:v libx264 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60"
+    fi
+    
+    # Audio encoding based on selected codec
+    if [[ "$AUDIO_CODEC" == "opus" ]]; then
+        cmd+=" -c:a libopus -b:a 128k"
+    else
+        cmd+=" -c:a aac -b:a 128k"
+    fi
+    
     cmd+=" -t $((DURATION * 60))"
     
     local format=""
@@ -533,36 +601,14 @@ start_stream() {
     local padded_number=$(printf "%03d" "$stream_number")
     local stream_name="${STREAM_NAME}${padded_number}"
     
-    if [[ "$PROTOCOL" == "webrtc" ]]; then
-        # Use Python script for WebRTC
-        log_info "STREAM-${padded_number}" "Starting WebRTC stream: $stream_name"
-        
-        # Check if we have a virtual environment setup
-        local python_cmd="python3"
-        local webrtc_wrapper="$HOME/.local/bin/stream-load-tester-webrtc"
-        
-        if [[ -x "$webrtc_wrapper" ]]; then
-            python_cmd="$webrtc_wrapper"
-            log_debug "STREAM-${padded_number}" "Using virtual environment wrapper"
-        fi
-        
-        "$python_cmd" "${SCRIPT_DIR}/webrtc_publisher.py" \
-            --url "$SERVER_URL" \
-            --stream-name "$stream_name" \
-            --bitrate "$BITRATE" \
-            --duration "$DURATION" \
-            --log-file "$LOG_FILE" &
-        local pid=$!
-    else
-        # Use FFmpeg for other protocols - single stream mode
-        local ffmpeg_cmd=$(build_single_stream_ffmpeg_command "$stream_name")
-        log_info "STREAM-${padded_number}" "Starting stream: $stream_name"
-        log_debug "STREAM-${padded_number}" "Command: $ffmpeg_cmd"
-        
-        # Start ffmpeg in background and capture its PID
-        eval "$ffmpeg_cmd" </dev/null &
-        local pid=$!
-    fi
+    # Use FFmpeg for all protocols - single stream mode
+    local ffmpeg_cmd=$(build_single_stream_ffmpeg_command "$stream_name")
+    log_info "STREAM-${padded_number}" "Starting stream: $stream_name"
+    log_debug "STREAM-${padded_number}" "Command: $ffmpeg_cmd"
+    
+    # Start ffmpeg in background and capture its PID
+    eval "$ffmpeg_cmd" </dev/null &
+    local pid=$!
     
     PIDS+=("$pid")
     log_info "STREAM-${padded_number}" "Stream started with PID: $pid"
@@ -624,37 +670,13 @@ start_multi_output_stream() {
 run_load_test() {
     START_TIME=$(date +%s)
     
-    # For WebRTC, we need separate processes (one per connection)
-    # For other protocols, we can use a single FFmpeg with multiple outputs (more efficient)
-    if [[ "$PROTOCOL" == "webrtc" ]]; then
-        log_info "MAIN" "Starting load test: $NUM_CONNECTIONS WebRTC connections over ${RAMP_TIME}m"
-        
-        # Calculate interval between connections for ramping
-        local interval_seconds=0
-        if (( NUM_CONNECTIONS > 1 )); then
-            interval_seconds=$(( (RAMP_TIME * 60) / (NUM_CONNECTIONS - 1) ))
-        fi
-        log_info "MAIN" "Connection interval: ${interval_seconds}s"
-        
-        # Start WebRTC connections with ramping
-        for (( i=1; i<=NUM_CONNECTIONS; i++ )); do
-            start_stream "$i"
-            
-            # Wait before starting next connection (except for the last one)
-            if (( i < NUM_CONNECTIONS && interval_seconds > 0 )); then
-                log_info "MAIN" "Waiting ${interval_seconds}s before next connection..."
-                sleep "$interval_seconds"
-            fi
-        done
-    else
-        # For RTMP/RTSP/SRT, use single FFmpeg process with multiple outputs
-        log_info "MAIN" "Starting load test: $NUM_CONNECTIONS ${PROTOCOL^^} streams (single encode, multiple outputs)"
-        log_info "MAIN" "Using efficient single-process mode to reduce CPU usage"
-        
-        if ! start_multi_output_stream; then
-            log_error "MAIN" "Failed to start multi-output stream"
-            return 1
-        fi
+    # Use single FFmpeg process with multiple outputs for efficiency
+    log_info "MAIN" "Starting load test: $NUM_CONNECTIONS ${PROTOCOL^^} streams (single encode, multiple outputs)"
+    log_info "MAIN" "Using efficient single-process mode to reduce CPU usage"
+    
+    if ! start_multi_output_stream; then
+        log_error "MAIN" "Failed to start multi-output stream"
+        return 1
     fi
     
     log_info "MAIN" "All streams started. Test will run for ${DURATION} minutes."
@@ -702,22 +724,11 @@ monitor_test() {
         log_debug "MONITOR" "running_count=$running_count, remaining_time=$remaining_time"
         
         # For multi-output mode (RTMP/RTSP/SRT), we have 1 process serving N streams
-        # For WebRTC, we have N processes
-        if [[ "$PROTOCOL" != "webrtc" ]]; then
-            if (( running_count > 0 )); then
-                log_info "MONITOR" "FFmpeg process running, ${NUM_CONNECTIONS} streams active, Time remaining: ${remaining_time}s"
-            else
-                log_warn "MONITOR" "FFmpeg process ended prematurely"
-                break
-            fi
+        if (( running_count > 0 )); then
+            log_info "MONITOR" "FFmpeg process running, ${NUM_CONNECTIONS} streams active, Time remaining: ${remaining_time}s"
         else
-            log_info "MONITOR" "Running streams: $running_count/$NUM_CONNECTIONS, Time remaining: ${remaining_time}s"
-            
-            # If no streams are running, exit early
-            if (( running_count == 0 )); then
-                log_warn "MONITOR" "All streams have ended prematurely"
-                break
-            fi
+            log_warn "MONITOR" "FFmpeg process ended prematurely"
+            break
         fi
     done
     
@@ -734,19 +745,18 @@ print_summary() {
     echo "                    TEST SUMMARY"
     echo "==============================================================${NC}"
     echo "Protocol:           $PROTOCOL"
+    echo "Resolution:         $RESOLUTION (${VIDEO_WIDTH}x${VIDEO_HEIGHT})"
+    echo "Video Codec:        $VIDEO_CODEC"
+    echo "Audio Codec:        $AUDIO_CODEC"
     echo "Server URL:         $SERVER_URL"
     echo "Stream Name:        $STREAM_NAME"
     echo "Bitrate:            ${BITRATE}k"
     echo "Connections:        $NUM_CONNECTIONS"
     
     # Show encoding mode info
-    if [[ "$PROTOCOL" == "webrtc" ]]; then
-        echo "Encoding Mode:      Multiple processes (${NUM_CONNECTIONS} encodes)"
-    else
-        echo "Encoding Mode:      Single process (1 encode, ${NUM_CONNECTIONS} outputs)"
-    fi
+    echo "Encoding Mode:      Single process (1 encode, ${NUM_CONNECTIONS} outputs)"
+    echo "Stream Start:       All streams start simultaneously"
     
-    echo "Ramp-up Time:       ${RAMP_TIME}m"
     echo "Test Duration:      ${DURATION}m"
     echo "Actual Runtime:     ${total_time}s"
     echo "Log File:           $LOG_FILE"
@@ -758,27 +768,35 @@ print_summary() {
 #############################################################################
 
 show_help() {
-    echo "Stream Load Tester v1.0"
+    echo "Stream Load Tester v2.0"
     echo
     echo "Usage: $0 [OPTIONS]"
     echo
     echo "Options:"
-    echo "  -p, --protocol PROTOCOL     Protocol to use (rtmp, rtsp, srt, webrtc)"
-    echo "  -b, --bitrate BITRATE       Bitrate in kbps (default: $DEFAULT_BITRATE)"
+    echo "  -p, --protocol PROTOCOL     Protocol to use (rtmp, rtsp, srt)"
+    echo "  -r, --resolution RES        Resolution (4k, 1080p, 720p, 360p) (default: $DEFAULT_RESOLUTION)"
+    echo "  --video-codec CODEC         Video codec (h264, h265) (default: $DEFAULT_VIDEO_CODEC)"
+    echo "  --audio-codec CODEC         Audio codec (aac, opus) (default: $DEFAULT_AUDIO_CODEC)"
+    echo "  -b, --bitrate BITRATE       Bitrate in kbps (default: varies by resolution)"
     echo "  -u, --url URL               Server URL with application (format depends on protocol)"
     echo "  -c, --connections COUNT     Number of connections (default: $DEFAULT_CONNECTIONS)"
-    echo "  -r, --ramp-time MINUTES     Ramp-up time in minutes (default: $DEFAULT_RAMP_TIME)"
     echo "  -s, --stream-name NAME      Base stream name (numbers will be appended)"
     echo "  -d, --duration MINUTES      Test duration in minutes (default: $DEFAULT_DURATION)"
     echo "  -l, --log-level LEVEL       Log level (DEBUG, INFO, WARN, ERROR)"
+    echo "  --debug                     Enable debug mode"
     echo "  -h, --help                  Show this help message"
     echo "  -v, --version               Show version information"
+    echo
+    echo "Resolution Bitrate Recommendations:"
+    echo "  4K (3840x2160):     8000-20000 kbps"
+    echo "  1080p (1920x1080):  2000-8000 kbps"
+    echo "  720p (1280x720):    1000-4000 kbps"
+    echo "  360p (640x360):     400-1500 kbps"
     echo
     echo "URL Formats by Protocol:"
     echo "  RTMP:   rtmp://server:port/application"
     echo "  RTSP:   rtsp://server:port/application"
     echo "  SRT:    srt://server:port?streamid=application (Wowza format used automatically)"
-    echo "  WebRTC: wss://domain:port/application"
     echo
     echo "Note: SRT streams will be published using Wowza's format:"
     echo "      srt://server:port?streamid=#!::m=publish,r=application/_definst_/stream-name"
@@ -787,23 +805,20 @@ show_help() {
     echo "  # Interactive mode"
     echo "  $0"
     echo
-    echo "  # Command line mode - RTMP"
-    echo "  $0 --protocol rtmp --bitrate 2000 --url 'rtmp://192.168.1.100:1935/live' \\"
-    echo "     --connections 10 --ramp-time 5 --stream-name 'test' --duration 30"
+    echo "  # Command line mode - RTMP with 4K H.265"
+    echo "  $0 --protocol rtmp --resolution 4k --video-codec h265 --audio-codec opus \\"
+    echo "     --bitrate 12000 --url 'rtmp://192.168.1.100:1935/live' \\"
+    echo "     --connections 10 --stream-name 'test' --duration 30"
     echo
     echo "  # Command line mode - SRT (provide application name, Wowza format applied automatically)"
     echo "  $0 --protocol srt --bitrate 3000 --url 'srt://192.168.1.100:9999?streamid=live' \\"
     echo "     --connections 5 --stream-name 'stream' --duration 60"
-    echo
-    echo "  # Command line mode - WebRTC"
-    echo "  $0 --protocol webrtc --bitrate 3500 --url 'wss://wowza.example.com:443/webrtc' \\"
-    echo "     --connections 5 --ramp-time 1 --stream-name 'test' --duration 10"
 }
 
 show_version() {
-    echo "Stream Load Tester v1.0"
+    echo "Stream Load Tester v2.0"
     echo "Multi-Protocol Stream Publishing Tool"
-    echo "October 15, 2025"
+    echo "October 16, 2025"
 }
 
 parse_args() {
@@ -825,16 +840,24 @@ parse_args() {
                 NUM_CONNECTIONS="$2"
                 shift 2
                 ;;
-            -r|--ramp-time)
-                RAMP_TIME="$2"
-                shift 2
-                ;;
             -s|--stream-name)
                 STREAM_NAME="$2"
                 shift 2
                 ;;
             -d|--duration)
                 DURATION="$2"
+                shift 2
+                ;;
+            -r|--resolution)
+                RESOLUTION="$2"
+                shift 2
+                ;;
+            --video-codec)
+                VIDEO_CODEC="$2"
+                shift 2
+                ;;
+            --audio-codec)
+                AUDIO_CODEC="$2"
                 shift 2
                 ;;
             -l|--log-level)
@@ -880,42 +903,53 @@ main() {
     # Print banner
     print_banner
     
-    # Check dependencies (capture output and exit code to make failures visible)
+    # Check dependencies first
     log_info "MAIN" "Checking dependencies..."
-
-    # Print environment useful for dependency checks (always visible)
-    echo "--- Environment diagnostics ---" | tee -a "$LOG_FILE"
-    echo "PATH=$PATH" | tee -a "$LOG_FILE"
-    echo "which ffmpeg: $(command -v ffmpeg || echo 'none')" | tee -a "$LOG_FILE"
-    (command -v ffmpeg >/dev/null 2>&1 && ffmpeg -version 2>&1 | head -n1 || echo 'ffmpeg not present') | tee -a "$LOG_FILE"
-    echo "which python3: $(command -v python3 || echo 'none')" | tee -a "$LOG_FILE"
-    (command -v python3 >/dev/null 2>&1 && python3 --version 2>&1 || echo 'python3 not present') | tee -a "$LOG_FILE"
-    echo "--- End diagnostics ---" | tee -a "$LOG_FILE"
-    # Run checker once and capture its exit code while mirroring output to the log
-    local checker_status=0
-    local tee_status=0
-    local status_array=()
-
-    set +e  # Allow the pipeline to fail without aborting so we can inspect PIPESTATUS
-    "${SCRIPT_DIR}/check_dependencies.sh" basic 2>&1 | tee -a "$LOG_FILE"
-    status_array=("${PIPESTATUS[@]}")
-    set -e
-
-    checker_status=${status_array[0]:-1}
-    tee_status=${status_array[1]:-0}
-
-    if (( tee_status != 0 )); then
-        log_warn "MAIN" "Failed to write dependency check output to log (tee exited with ${tee_status})."
+    
+    if ! "${SCRIPT_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
+        log_warn "MAIN" "Dependencies not met. Running installation script..."
+        echo
+        echo -e "${YELLOW}Dependencies are missing or incomplete.${NC}"
+        echo -e "${YELLOW}Running automatic installation...${NC}"
+        echo
+        
+        # Run installation script with auto-confirm
+        if ! "${SCRIPTS_DIR}/install.sh" --yes 2>&1 | tee -a "$LOG_FILE"; then
+            log_error "MAIN" "Installation failed"
+            log_error "MAIN" "Please run './scripts/install.sh' manually or install dependencies yourself"
+            exit 1
+        fi
+        
+        echo
+        log_info "MAIN" "Installation completed successfully"
+        
+        # Re-check dependencies after installation
+        if ! "${SCRIPT_DIR}/check_dependencies.sh" >/dev/null 2>&1; then
+            log_error "MAIN" "Dependencies still not met after installation"
+            log_error "MAIN" "Please check the error messages above and install missing dependencies manually"
+            exit 1
+        fi
     fi
-
-    if (( checker_status != 0 )); then
-        log_error "MAIN" "Basic dependencies not met (check exited with code ${checker_status}). See above for details."
+    
+    log_info "MAIN" "All dependencies verified"
+    
+    # Ensure FFmpeg requirements are met (double-check)
+    log_info "MAIN" "Verifying FFmpeg configuration..."
+    
+    if ! "${SCRIPTS_DIR}/ensure_ffmpeg_requirements.sh" --quiet 2>&1 | tee -a "$LOG_FILE"; then
+        log_error "MAIN" "Failed to ensure FFmpeg requirements"
+        log_error "MAIN" "Please install FFmpeg with H.264 and AAC support manually"
         exit 1
     fi
+    
+    log_info "MAIN" "FFmpeg configuration verified"
     
     # If running in interactive mode, get user input
     if [[ -z "$PROTOCOL" ]]; then
         select_protocol
+        get_resolution
+        get_video_codec
+        get_audio_codec
         get_bitrate
         get_server_url
         get_connection_params
@@ -929,15 +963,64 @@ main() {
         fi
         
         # Set defaults for missing values
-        BITRATE="${BITRATE:-$DEFAULT_BITRATE}"
+        RESOLUTION="${RESOLUTION:-$DEFAULT_RESOLUTION}"
+        VIDEO_CODEC="${VIDEO_CODEC:-$DEFAULT_VIDEO_CODEC}"
+        AUDIO_CODEC="${AUDIO_CODEC:-$DEFAULT_AUDIO_CODEC}"
+        
+        # Set resolution-dependent values
+        case "$RESOLUTION" in
+            "4k")
+                VIDEO_WIDTH=3840
+                VIDEO_HEIGHT=2160
+                MIN_BITRATE=8000
+                MAX_BITRATE=20000
+                BITRATE="${BITRATE:-12000}"
+                ;;
+            "1080p")
+                VIDEO_WIDTH=1920
+                VIDEO_HEIGHT=1080
+                MIN_BITRATE=2000
+                MAX_BITRATE=8000
+                BITRATE="${BITRATE:-4000}"
+                ;;
+            "720p")
+                VIDEO_WIDTH=1280
+                VIDEO_HEIGHT=720
+                MIN_BITRATE=1000
+                MAX_BITRATE=4000
+                BITRATE="${BITRATE:-2500}"
+                ;;
+            "360p")
+                VIDEO_WIDTH=640
+                VIDEO_HEIGHT=360
+                MIN_BITRATE=400
+                MAX_BITRATE=1500
+                BITRATE="${BITRATE:-800}"
+                ;;
+            *)
+                log_error "MAIN" "Invalid resolution: $RESOLUTION. Must be 4k, 1080p, 720p, or 360p"
+                exit 1
+                ;;
+        esac
+        
+        # Validate video codec
+        if [[ "$VIDEO_CODEC" != "h264" && "$VIDEO_CODEC" != "h265" ]]; then
+            log_error "MAIN" "Invalid video codec: $VIDEO_CODEC. Must be h264 or h265"
+            exit 1
+        fi
+        
+        # Validate audio codec
+        if [[ "$AUDIO_CODEC" != "aac" && "$AUDIO_CODEC" != "opus" ]]; then
+            log_error "MAIN" "Invalid audio codec: $AUDIO_CODEC. Must be aac or opus"
+            exit 1
+        fi
+        
         NUM_CONNECTIONS="${NUM_CONNECTIONS:-$DEFAULT_CONNECTIONS}"
-        RAMP_TIME="${RAMP_TIME:-$DEFAULT_RAMP_TIME}"
         DURATION="${DURATION:-$DEFAULT_DURATION}"
         
         # Validate all parameters
         validate_number "$BITRATE" "$MIN_BITRATE" "$MAX_BITRATE" "Bitrate" || exit 1
         validate_number "$NUM_CONNECTIONS" 1 "$MAX_CONNECTIONS" "Number of connections" || exit 1
-        validate_number "$RAMP_TIME" 1 60 "Ramp-up time" || exit 1
         validate_number "$DURATION" 1 1440 "Duration" || exit 1
         validate_url "$SERVER_URL" "$PROTOCOL" || exit 1
     fi
@@ -946,10 +1029,12 @@ main() {
     echo
     echo -e "${YELLOW}Configuration Summary:${NC}"
     echo "Protocol:           $PROTOCOL"
+    echo "Resolution:         $RESOLUTION (${VIDEO_WIDTH}x${VIDEO_HEIGHT})"
+    echo "Video Codec:        $VIDEO_CODEC"
+    echo "Audio Codec:        $AUDIO_CODEC"
     echo "Bitrate:            ${BITRATE}k"
     echo "Server URL:         $SERVER_URL"
-    echo "Connections:        $NUM_CONNECTIONS"
-    echo "Ramp-up Time:       ${RAMP_TIME}m"
+    echo "Connections:        $NUM_CONNECTIONS (start simultaneously)"
     echo "Stream Name:        $STREAM_NAME"
     echo "Duration:           ${DURATION}m"
     echo "Log File:           $LOG_FILE"
@@ -974,6 +1059,7 @@ main() {
     log_info "MAIN" "Stream load test completed"
     
     # Note: cleanup() will be called automatically via the EXIT trap
+    # For orphaned processes from crashes/disconnects, use: ./scripts/cleanup.sh
 }
 
 # Execute main function with all arguments

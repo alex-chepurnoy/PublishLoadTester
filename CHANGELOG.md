@@ -2,13 +2,32 @@
 
 All notable changes to the Stream Load Tester project.
 
+## [2.0.0] - 2025-10-16
+
+### Removed
+- **WebRTC protocol support** - Removed due to unresolvable network compatibility issues
+  - Removed webrtc_publisher.py Python script
+  - Removed check_webrtc_deps.py dependency checker
+  - Removed fix_webrtc_deps.sh and fix_python_packages.sh scripts
+  - Removed Python and GStreamer dependencies
+  - Removed DTLS documentation and test scripts
+  - Removed requirements.txt
+
+### Changed
+- **Simplified dependencies** - Now only requires FFmpeg
+- **Updated documentation** - Removed all WebRTC references from README
+- **Updated check_dependencies.sh** - Removed Python and GStreamer checks
+- **Updated config/default.conf** - Removed WebRTC configuration section
+- **Updated cleanup scripts** - Removed WebRTC process management
+- **Protocol options** - Changed from 4 protocols to 3 (RTMP, RTSP, SRT)
+
 ## [1.1.0] - 2025-10-15
 
 ### Added
 - **Single-encode mode** for RTMP/RTSP/SRT protocols using FFmpeg tee muxer
   - 80-90% CPU reduction for multiple streams
   - Single FFmpeg process outputs to all destinations
-  - Automatic activation for non-WebRTC protocols
+  - Automatic activation for all protocols
 - **Enhanced interactive configuration**
   - Separate prompts for server, application, and stream name
   - Clear examples for each protocol
@@ -46,16 +65,15 @@ All notable changes to the Stream Load Tester project.
 ### Performance
 - **RTMP/RTSP/SRT**: 80-90% CPU reduction vs previous version
 - **Memory**: 50% reduction for multi-stream scenarios
-- **Startup**: Instant for RTMP/RTSP/SRT (no ramping needed)
+- **Startup**: Instant for all protocols (no ramping needed)
 
 ## [1.0.0] - 2025-10-14
 
 ### Initial Release
-- Multi-protocol support (RTMP, RTSP, SRT, WebRTC)
+- Multi-protocol support (RTMP, RTSP, SRT)
 - Multiple concurrent stream generation
 - Test pattern video and sine wave audio
 - Configurable bitrates and durations
-- Ramp-up support for gradual load
 - Comprehensive logging
 - Dependency checking
 - Process cleanup utilities

@@ -92,24 +92,6 @@ cleanup_processes() {
         fi
     fi
     
-    # Find Python WebRTC processes
-    if pgrep -f "webrtc_publisher.py" >/dev/null 2>&1; then
-        processes_found=true
-        warn "Found running WebRTC publisher processes"
-        
-        if [[ "$FORCE" == "true" ]]; then
-            info "Killing WebRTC publisher processes..."
-            pkill -f "webrtc_publisher.py" || true
-        else
-            echo "Kill running WebRTC publisher processes? (y/N)"
-            read -r response
-            if [[ "$response" =~ ^[Yy] ]]; then
-                info "Killing WebRTC publisher processes..."
-                pkill -f "webrtc_publisher.py" || true
-            fi
-        fi
-    fi
-    
     # Check for any orphaned stream_load_tester processes
     if pgrep -f "stream_load_tester.sh" >/dev/null 2>&1; then
         processes_found=true
@@ -137,7 +119,6 @@ cleanup_processes() {
         # Check if any processes are still running
         local remaining=0
         remaining+=$(pgrep -f "testsrc2.*sine" | wc -l || echo 0)
-        remaining+=$(pgrep -f "webrtc_publisher.py" | wc -l || echo 0)
         remaining+=$(pgrep -f "stream_load_tester.sh" | wc -l || echo 0)
         
         if (( remaining > 0 )); then
@@ -209,7 +190,6 @@ cleanup_temp_files() {
     # Remove any temporary files that might be created
     local temp_patterns=(
         "/tmp/stream_load_tester_*"
-        "/tmp/webrtc_*"
         "${SCRIPT_DIR}/*.tmp"
         "${SCRIPT_DIR}/*.pid"
     )
@@ -236,15 +216,12 @@ show_system_status() {
     
     # Show running processes
     local ffmpeg_count=0
-    local webrtc_count=0
     local script_count=0
     
     ffmpeg_count=$(pgrep -f "testsrc2.*sine" | wc -l || echo 0)
-    webrtc_count=$(pgrep -f "webrtc_publisher.py" | wc -l || echo 0)
     script_count=$(pgrep -f "stream_load_tester.sh" | wc -l || echo 0)
     
     echo "  FFmpeg test streams: $ffmpeg_count"
-    echo "  WebRTC publishers: $webrtc_count"
     echo "  Stream load tester scripts: $script_count"
     
     # Show log directory status
