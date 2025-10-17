@@ -49,13 +49,92 @@ debug() {
 make_scripts_executable() {
     info "Making scripts executable..."
     
-    chmod +x "$PROJECT_ROOT/stream_load_tester.sh"
-    chmod +x "$SCRIPT_DIR/check_dependencies.sh"
-    chmod +x "$SCRIPT_DIR/cleanup.sh"
-    chmod +x "$SCRIPT_DIR/ensure_ffmpeg_requirements.sh"
-    chmod +x "$SCRIPT_DIR/fix_ffmpeg_codecs.sh"
+    # Make all .sh files in the project executable
+    find "$PROJECT_ROOT" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || {
+        # Fallback: chmod specific scripts if find fails (e.g., on some Windows/Git Bash setups)
+        chmod +x "$PROJECT_ROOT/stream_load_tester.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/check_dependencies.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/cleanup.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/ensure_ffmpeg_requirements.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/fix_ffmpeg_codecs.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/install.sh" 2>/dev/null || true
+        chmod +x "$SCRIPT_DIR/lib/ffmpeg_checks.sh" 2>/dev/null || true
+        
+        if [[ -d "$PROJECT_ROOT/orchestrator" ]]; then
+            chmod +x "$PROJECT_ROOT/orchestrator/run_orchestration.sh" 2>/dev/null || true
+            chmod +x "$PROJECT_ROOT/orchestrator/validate_server.sh" 2>/dev/null || true
+        fi
+    }
     
     debug "Made scripts executable"
+}
+
+install_python() {
+    info "Checking Python3..."
+    
+    if command -v python3 >/dev/null 2>&1; then
+        local version=$(python3 --version 2>&1)
+        info "Python3 already installed: $version"
+        return 0
+    fi
+    
+    warn "Python3 not found - required for orchestrator result parsing"
+    
+    if [[ "$SKIP_CONFIRMATION" == "false" ]]; then
+        echo "Install Python3? (Y/n)"
+        read -r response
+        if [[ "$response" =~ ^[Nn] ]]; then
+            warn "Skipping Python3 installation"
+            warn "Orchestrator will not be able to generate CSV results"
+            return 0
+        fi
+    fi
+    
+    info "Installing Python3..."
+    
+    # Detect OS and install accordingly
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        case "$ID" in
+            ubuntu|debian)
+                sudo apt-get update -qq
+                sudo apt-get install -y python3
+                ;;
+            fedora|rhel|centos)
+                sudo dnf install -y python3 || sudo yum install -y python3
+                ;;
+            arch|manjaro)
+                sudo pacman -S --noconfirm python
+                ;;
+            *)
+                error "Unsupported distribution: $ID"
+                error "Please install python3 manually"
+                return 1
+                ;;
+        esac
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew >/dev/null 2>&1; then
+            brew install python3
+        else
+            error "Homebrew not found. Please install Python3 manually"
+            error "Visit: https://www.python.org/downloads/"
+            return 1
+        fi
+    else
+        error "Unsupported OS: $OSTYPE"
+        error "Please install python3 manually"
+        return 1
+    fi
+    
+    # Verify installation
+    if command -v python3 >/dev/null 2>&1; then
+        local version=$(python3 --version 2>&1)
+        info "Python3 installed successfully: $version"
+        return 0
+    else
+        error "Python3 installation failed"
+        return 1
+    fi
 }
 
 create_symlinks() {
@@ -102,6 +181,7 @@ Usage: $0 [OPTIONS]
 
 This script:
   - Makes all scripts executable
+  - Installs Python3 if missing (required for orchestrator)
   - Ensures FFmpeg is installed with required codecs
   - Optionally creates system-wide symlinks
 
@@ -112,8 +192,13 @@ Options:
 
 Examples:
   $0                  # Interactive installation
-  $0 --yes            # Automatic installation
+  $0 --yes            # Automatic installation (recommended for CI/scripts)
   $0 --verbose        # Installation with detailed output
+
+Requirements:
+  - Bash 4.0+
+  - sudo access (for package installation)
+  - Internet connection (for downloading packages)
 
 EOF
 }
@@ -160,6 +245,7 @@ main() {
     if [[ "$SKIP_CONFIRMATION" == "false" ]]; then
         echo "This will:"
         echo "  - Make all scripts executable"
+        echo "  - Install Python3 (if missing, for orchestrator)"
         echo "  - Install FFmpeg with required codecs (if missing)"
         echo "  - Optionally create system-wide command symlinks"
         echo
@@ -173,6 +259,9 @@ main() {
     
     echo
     make_scripts_executable
+    
+    echo
+    install_python
     
     echo
     info "Ensuring FFmpeg requirements..."

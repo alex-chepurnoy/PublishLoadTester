@@ -1,118 +1,137 @@
 # Changelog
 
-All notable changes to the Stream Load Tester project.
+All notable changes to the Stream Load Tester project will be documented in this file.
 
-## [2.1.1] - 2025-10-16
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### Fixed
-- **H.264 encoding compatibility with Wowza Engine**
-  - Changed to baseline profile (from main) for maximum compatibility
-  - Added explicit frame rate specification (`-r 30`)
-  - Added thread auto-detection (`-threads 0`) for optimal performance
-  - Added global header flag (`-flags +global_header`) for proper AVCC initialization
-  - Added resolution-appropriate H.264 levels:
-    - 4K: Level 5.1 (supports up to 4096x2304 @ 30fps)
-    - 1080p: Level 4.0 (supports up to 1920x1080 @ 30fps)
-    - 720p: Level 3.1 (supports up to 1280x720 @ 30fps)
-    - 360p: Level 3.0 (supports up to 720x576 @ 30fps)
-  - Added pixel format specification (`yuv420p`) for consistent color space
-  - Disabled scene detection (`-sc_threshold 0`) to prevent unexpected keyframes
-  - Removed redundant parameters that caused x264 conflicts
-  - Fixes "H264Utils.decodeAVCC: ArrayIndexOutOfBoundsException" error in Wowza Engine
-  - Ensures proper SPS/PPS header generation with complete codec info for all resolutions
-  - Based on official Wowza encoding recommendations
-
-## [2.1.0] - 2025-10-16
+## [Unreleased]
 
 ### Added
-- **Save and reuse test configurations**
-  - After successful test completion, option to save configuration for future use
-  - Auto-generated configuration names based on test parameters
-  - Ability to append custom text to configuration names
-  - Saved configurations stored in `previous_runs/` directory
-- **Previous runs menu on startup**
-  - Lists all saved configurations when script starts
-  - View configuration summary before running
-  - Option to re-run with existing settings
-  - Option to modify server URL, app name, and stream name before running
-  - Quick access to frequently used test scenarios
+- VP9 (libvpx-vp9) codec support for video encoding
+- H.265 (libx265) and VP9 encoder detection in FFmpeg checks library
+- Codec selection menu now includes H.264, H.265, and VP9 options
+- Optimized VP9 encoding parameters for real-time streaming (-speed 4, tile-columns, row-mt)
+- VP9 support in orchestrator test matrix (h264, h265, vp9)
+- Comprehensive VP9 implementation documentation (IMPLEMENTATION_PLAN, QUICK_SUMMARY, IMPLEMENTATION_COMPLETE)
+- Hardware-accelerated encoder support detection (NVENC, QSV, VAAPI for H.264/H.265/VP9)
 
 ### Changed
-- Enhanced user workflow with configuration management
-- Improved interactive mode with previous run selection
+- `check_dependencies.sh` now uses `FFMPEG_H265_ENCODERS` array instead of inline list
+- Orchestrator `VIDEO_CODECS` array expanded from `(h264 h265)` to `(h264 h265 vp9)`
+- Codec selection input range changed from [1-2] to [1-3]
+
+### Technical Details
+- **Files Modified**: 4
+  - `scripts/lib/ffmpeg_checks.sh` - Added VP9 and H.265 encoder arrays
+  - `scripts/check_dependencies.sh` - Added VP9 check with FFMPEG_VP9_ENCODERS array
+  - `stream_load_tester.sh` - Added VP9 to menu, multi-stream, and single-stream functions
+  - `orchestrator/run_orchestration.sh` - Added vp9 to VIDEO_CODECS array
+- **Implementation Time**: ~30 minutes
+- **Backward Compatibility**: ✅ Fully backward compatible (additive changes only)
+- **Pilot Mode**: Still defaults to h264 for quick validation
 
 ## [2.0.0] - 2025-10-16
 
-### Removed
-- **WebRTC protocol support** - Removed due to unresolvable network compatibility issues
-  - Removed webrtc_publisher.py Python script
-  - Removed check_webrtc_deps.py dependency checker
-  - Removed fix_webrtc_deps.sh and fix_python_packages.sh scripts
-  - Removed Python and GStreamer dependencies
-  - Removed DTLS documentation and test scripts
-  - Removed requirements.txt
+### Added (Phase 0 - Monitoring Infrastructure)
+- Real-time server monitoring infrastructure for adaptive load testing
+- `get_server_heap()` - Java heap monitoring via jcmd with multi-GC support
+- `get_server_cpu()` - System CPU monitoring via mpstat/sar
+- `get_server_memory()` - RAM monitoring via free command
+- `get_server_network()` - Network throughput monitoring via sar
+- `check_server_status()` - Unified health check function
+- `remote_monitor.sh` - Server-side continuous monitoring (5-second CSV logging)
+- `validate_server.sh` - Pre-flight validation script (6 validation checks)
+- `diagnose_jcmd.sh` - Heap monitoring troubleshooting tool
+- Adaptive stopping at 80% CPU or 80% heap thresholds
+- Multi-GC support: Parallel GC, G1GC, ZGC, Shenandoah
+- Passwordless sudo configuration for Java monitoring tools
+- ZGC MB format parsing (handles "194M" format, not just KB)
+- Local AWK processing pattern for reliable remote data parsing
 
-### Changed
-- **Simplified dependencies** - Now only requires FFmpeg
-- **Updated documentation** - Removed all WebRTC references from README
-- **Updated check_dependencies.sh** - Removed Python and GStreamer checks
-- **Updated config/default.conf** - Removed WebRTC configuration section
-- **Updated cleanup scripts** - Removed WebRTC process management
-- **Protocol options** - Changed from 4 protocols to 3 (RTMP, RTSP, SRT)
+### Fixed (Phase 0 - 10 Major Fixes)
+1. Java tools dual-location detection (PATH + Wowza bundled JDK)
+2. SSH warning suppression (-q -o LogLevel=ERROR)
+3. Log function stderr redirect (>&2 to prevent stdout pollution)
+4. Passwordless sudo via /etc/sudoers.d/java-monitoring
+5. Multi-GC support for heap monitoring
+6. Correct PID detection (Bootstrap Engine vs Manager process)
+7. Heap MB logging in CSV (not just percentage)
+8. ZGC MB format parsing (194M vs 198656K)
+9. AWK BEGIN block variable initialization
+10. Local AWK processing (SSH data fetch + local parse, not remote AWK)
 
-## [1.1.0] - 2025-10-15
+### Changed (Phase 0)
+- Monitoring functions now return accurate percentages (0.00-100.00)
+- CSV logs now include HEAP_USED_MB and HEAP_CAPACITY_MB columns
+- `parse_run.py` updated to parse monitor CSVs and convert to MB
+- Health checks integrated into main orchestration loop
+- Results CSV includes heap_used_mb and heap_capacity_mb (was heap_used_kb)
+
+### Documentation (Phase 0)
+- Created 20+ documentation files in organized structure
+- `phase0/` - Phase 0 implementation guides (8 files)
+- `troubleshooting/` - Issue resolution guides (4 files)
+- `fixes/` - Detailed fix documentation (8 files)
+- `PHASE_0_FINAL_SUMMARY.md` - Comprehensive Phase 0 summary
+- `IMPLEMENTATION_PLAN.md` - Multi-phase project roadmap
+
+### Testing (Phase 0)
+- Production validated on EC2 t3.xlarge with Wowza Streaming Engine
+- ZGC (Generational mode) with 5.4 GB max heap
+- All 10 monitoring functions tested and validated
+- Pilot mode successfully runs with real-time health checks
+
+## [1.0.0] - 2025-10-15
 
 ### Added
-- **Single-encode mode** for RTMP/RTSP/SRT protocols using FFmpeg tee muxer
-  - 80-90% CPU reduction for multiple streams
-  - Single FFmpeg process outputs to all destinations
-  - Automatic activation for all protocols
-- **Enhanced interactive configuration**
-  - Separate prompts for server, application, and stream name
-  - Clear examples for each protocol
-  - Improved URL validation
-- **Comprehensive debug logging**
-  - Detailed monitoring loop diagnostics
-  - Process state tracking
-  - FFmpeg error capture and reporting
-- **Cleanup protection**
-  - Guard against multiple cleanup calls
-  - Prevention of infinite cleanup loops
+- Initial release of Stream Load Tester
+- Multi-protocol support: RTMP, RTSP, SRT
+- Multiple resolution support: 360p, 720p, 1080p, 4K
+- H.264 and H.265 video codec support
+- AAC and Opus audio codec support
+- Multi-stream concurrent publishing via FFmpeg tee muxer
+- Orchestration system for automated testing
+- Python result parsing and CSV generation
+- Dependency checking and installation scripts
+- Graceful cleanup and interrupt handling
+- Pilot mode for quick validation
 
-### Changed
-- **URL format standardization**
-  - URLs now exclude stream names
-  - Stream names specified separately and auto-numbered
-  - Example: `rtmp://server:1935/live` + `test` → `test001`, `test002`, etc.
-- **Dependency checker improvements**
-  - Removed strict `set -e` mode for graceful error handling
-  - Better error reporting and diagnosis
-  - Fixed codec detection issues
-- **Monitoring improvements**
-  - Protocol-specific status messages
-  - Better process lifecycle management
-  - Enhanced error detection
+### Features
+- Protocol-specific URL construction
+- Bitrate configuration per resolution
+- Configurable test duration and connection count
+- Progress tracking with connection status
+- Log file management and rotation
+- Previous runs archival
+- FFmpeg encoding optimization per protocol
 
-### Fixed
-- FFmpeg process premature termination
-- Cleanup infinite loop on script exit
-- Dependency checker false negatives
-- Stream name URL format confusion
-- Monitor test not executing properly
-- Arithmetic expansion issues with `set -e`
+## Project Information
 
-### Performance
-- **RTMP/RTSP/SRT**: 80-90% CPU reduction vs previous version
-- **Memory**: 50% reduction for multi-stream scenarios
-- **Startup**: Instant for all protocols (no ramping needed)
+**Repository**: https://github.com/alex-chepurnoy/PublishLoadTester  
+**Author**: alex-chepurnoy  
+**License**: [Add License]  
+**Documentation**: See `orchestrator/docs/` for comprehensive guides
 
-## [1.0.0] - 2025-10-14
+### Key Capabilities
 
-### Initial Release
-- Multi-protocol support (RTMP, RTSP, SRT)
-- Multiple concurrent stream generation
-- Test pattern video and sine wave audio
-- Configurable bitrates and durations
-- Comprehensive logging
-- Dependency checking
-- Process cleanup utilities
+**Video Codecs**:
+- H.264 (libx264) - Widely compatible, good compression, baseline CPU usage
+- H.265 (libx265) - Better compression (~30% bitrate savings), higher CPU usage  
+- VP9 (libvpx-vp9) - Open-source, high compression (~30% bitrate savings), highest CPU usage (2-3x H.264)
+
+**Monitoring**:
+- Real-time CPU, Heap, Memory, Network monitoring
+- Adaptive stopping at resource thresholds (80% CPU or Heap)
+- Multi-GC support for Java heap monitoring
+- CSV logging every 5 seconds
+
+**Testing**:
+- Comprehensive test matrix: 3 protocols × 4 resolutions × 3 codecs × 6 connection levels
+- Pilot mode for quick validation
+- Automated capacity measurement
+- Safe testing with adaptive stopping
+
+---
+
+**Note**: This CHANGELOG was created on 2025-10-17 and captures recent development history. Earlier changes may not be fully documented.

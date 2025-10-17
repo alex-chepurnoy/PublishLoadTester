@@ -114,6 +114,21 @@ check_bash() {
     fi
 }
 
+check_python() {
+    echo -e "${BLUE}Checking Python3...${NC}"
+    
+    if command -v python3 >/dev/null 2>&1; then
+        local version=$(python3 --version 2>&1 || echo "Unknown version")
+        print_status "Python3" "OK" "$version"
+    else
+        print_status "Python3" "ERROR" "Not installed (required for orchestrator)"
+        BASIC_DEPS_OK=false
+        BASIC_FAILURES+=("Python3: Not installed (required for result parsing)")
+        echo -e "${YELLOW}    Required for: Orchestrator result parsing and CSV generation${NC}"
+        echo -e "${YELLOW}    Fix: Run ./scripts/install.sh --yes${NC}"
+    fi
+}
+
 check_ffmpeg() {
     echo -e "${BLUE}Checking FFmpeg...${NC}"
     
@@ -143,7 +158,7 @@ check_ffmpeg() {
         esac
         
         # Check for H.265 encoder (optional but recommended)
-        ffmpeg_has_any_encoder "libx265" "hevc_nvenc" "hevc_qsv" "hevc_videotoolbox"
+        ffmpeg_has_any_encoder "${FFMPEG_H265_ENCODERS[@]}"
         local h265_status=$?
         case $h265_status in
             0)
@@ -155,6 +170,22 @@ check_ffmpeg() {
                 ;;
             *)
                 print_status "  H.265 encoder" "WARN" "Unable to determine availability"
+                ;;
+        esac
+        
+        # Check for VP9 encoder (optional but recommended)
+        ffmpeg_has_any_encoder "${FFMPEG_VP9_ENCODERS[@]}"
+        local vp9_status=$?
+        case $vp9_status in
+            0)
+                print_status "  VP9 encoder" "OK" "Available"
+                ;;
+            1)
+                print_status "  VP9 encoder" "WARN" "Not available (optional)"
+                echo -e "${YELLOW}    Note: VP9 support recommended for open-source codec testing${NC}"
+                ;;
+            *)
+                print_status "  VP9 encoder" "WARN" "Unable to determine availability"
                 ;;
         esac
 
@@ -297,6 +328,8 @@ check_basic_dependencies() {
     
     check_bash
     echo
+    check_python
+    echo
     check_ffmpeg
     echo
     check_basic_tools
@@ -331,6 +364,7 @@ show_help() {
     echo
     echo "This script checks for:"
     echo "  - Bash 4.0+"
+    echo "  - Python 3 (for orchestrator result parsing)"
     echo "  - FFmpeg with H.264 and AAC encoders (required)"
     echo "  - FFmpeg with H.265 and Opus encoders (optional)"
     echo "  - FFmpeg with testsrc2 and sine filters"

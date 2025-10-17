@@ -280,14 +280,33 @@ get_video_codec() {
     echo -e "${BLUE}Select Video Codec:${NC}"
     echo "1) H.264 (libx264) - Widely compatible, good compression"
     echo "2) H.265 (libx265) - Better compression, lower bitrate for same quality"
+    
+    # VP9 only supported for SRT protocol (MPEGTS container)
+    # RTMP (FLV) does not support VP9
+    # RTSP (RTP) requires experimental flag for VP9
+    local show_vp9=false
+    local max_choice=2
+    if [[ "${PROTOCOL,,}" == "srt" ]]; then
+        echo "3) VP9 (libvpx-vp9) - Open-source, high compression, higher CPU usage (SRT only)"
+        show_vp9=true
+        max_choice=3
+    fi
     echo
     
     while true; do
-        read -p "Enter choice [1-2]: " choice
+        read -p "Enter choice [1-${max_choice}]: " choice
         case "$choice" in
             1) VIDEO_CODEC="h264"; break ;;
             2) VIDEO_CODEC="h265"; break ;;
-            *) echo "Invalid choice. Please enter 1-2." ;;
+            3) 
+                if [[ "$show_vp9" == "true" ]]; then
+                    VIDEO_CODEC="vp9"
+                    break
+                else
+                    echo "Invalid choice. Please enter 1-${max_choice}."
+                fi
+                ;;
+            *) echo "Invalid choice. Please enter 1-${max_choice}." ;;
         esac
     done
     
@@ -503,6 +522,11 @@ build_multi_output_ffmpeg_command() {
     # Video encoding based on selected codec
     if [[ "$VIDEO_CODEC" == "h265" ]]; then
         cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
+    elif [[ "$VIDEO_CODEC" == "vp9" ]]; then
+        # VP9 encoding optimized for real-time streaming
+        cmd+=" -c:v libvpx-vp9 -b:v ${BITRATE}k -crf 31 -g 60 -keyint_min 60"
+        cmd+=" -speed 4 -tile-columns 2 -threads 4 -row-mt 1"
+        cmd+=" -quality realtime -deadline realtime"
     else
         # H.264 encoding with Wowza-compatible settings
         # Select appropriate level based on resolution
@@ -589,6 +613,11 @@ build_single_stream_ffmpeg_command() {
     # Video encoding based on selected codec
     if [[ "$VIDEO_CODEC" == "h265" ]]; then
         cmd+=" -c:v libx265 -preset veryfast -b:v ${BITRATE}k -g 60 -keyint_min 60 -x265-params keyint=60:min-keyint=60"
+    elif [[ "$VIDEO_CODEC" == "vp9" ]]; then
+        # VP9 encoding optimized for real-time streaming
+        cmd+=" -c:v libvpx-vp9 -b:v ${BITRATE}k -crf 31 -g 60 -keyint_min 60"
+        cmd+=" -speed 4 -tile-columns 2 -threads 4 -row-mt 1"
+        cmd+=" -quality realtime -deadline realtime"
     else
         # H.264 encoding with Wowza-compatible settings
         # Select appropriate level based on resolution
@@ -798,6 +827,12 @@ generate_config_name() {
 }
 
 save_test_configuration() {
+    # Skip in non-interactive mode
+    if [[ "${FORCE:-false}" == "true" ]]; then
+        log_info "MAIN" "Skipping configuration save (non-interactive mode)"
+        return
+    fi
+    
     echo
     echo -e "${CYAN}=============================================================="
     echo "                 SAVE TEST CONFIGURATION"
@@ -1111,6 +1146,7 @@ show_help() {
     echo "  -d, --duration MINUTES      Test duration in minutes (default: $DEFAULT_DURATION)"
     echo "  -l, --log-level LEVEL       Log level (DEBUG, INFO, WARN, ERROR)"
     echo "  --debug                     Enable debug mode"
+    echo "  -y, --yes, --force          Skip confirmation prompts (non-interactive mode)"
     echo "  -h, --help                  Show this help message"
     echo "  -v, --version               Show version information"
     echo
@@ -1194,6 +1230,10 @@ parse_args() {
                 ;;
             --debug)
                 export DEBUG="true"
+                shift
+                ;;
+            -y|--yes|--force)
+                FORCE="true"
                 shift
                 ;;
             -h|--help)

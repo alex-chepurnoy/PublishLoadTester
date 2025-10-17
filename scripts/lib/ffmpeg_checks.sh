@@ -15,6 +15,21 @@ FFMPEG_H264_ENCODERS=(
     "h264_v4l2m2m"
 )
 
+FFMPEG_H265_ENCODERS=(
+    "libx265"
+    "hevc_nvenc"
+    "hevc_qsv"
+    "hevc_vaapi"
+    "hevc_amf"
+    "hevc_v4l2m2m"
+)
+
+FFMPEG_VP9_ENCODERS=(
+    "libvpx-vp9"
+    "vp9_vaapi"
+    "vp9_qsv"
+)
+
 FFMPEG_AAC_ENCODERS=(
     "aac"
     "aac_fixed"
