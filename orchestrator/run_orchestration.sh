@@ -21,20 +21,21 @@ log() {
 # SSH options used for all ssh/scp calls; define early so check_ssh_connectivity can use it
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -o LogLevel=ERROR"
 
-# Timing windows (seconds) - defaults for full test runs
+# Phase 1: Timing windows updated to 15-minute tests (TEST_MATRIX specification)
+# Full test runs: 15 minutes per test
 WARMUP=60
-STEADY=600
+STEADY=840  # 14 minutes (15 min total - 1 min warmup)
 COOLDOWN=30
 TOTAL_SECONDS=$((WARMUP + STEADY + COOLDOWN))
 # stream_load_tester.sh takes minutes (integer)
-DURATION_MINUTES=$(( (TOTAL_SECONDS + 59) / 60 ))
+DURATION_MINUTES=$(( (TOTAL_SECONDS + 59) / 60 ))  # Results in 15 minutes
 
-# Pilot mode timing (shorter for quick validation)
+# Pilot mode timing (shorter for quick validation - 2 minutes)
 PILOT_WARMUP=15
 PILOT_STEADY=90
 PILOT_COOLDOWN=15
 PILOT_TOTAL_SECONDS=$((PILOT_WARMUP + PILOT_STEADY + PILOT_COOLDOWN))
-PILOT_DURATION_MINUTES=$(( (PILOT_TOTAL_SECONDS + 59) / 60 ))
+PILOT_DURATION_MINUTES=$(( (PILOT_TOTAL_SECONDS + 59) / 60 ))  # Results in 2 minutes
 
 DEFAULT_KEY="$HOME/AlexC_Dev2_EC2.pem"
 
@@ -215,50 +216,35 @@ scp_retry() {
   return 1
 }
 
-# Declare bitrate associative arrays first (needed before any indexed assignment)
-declare -A BITRATES_LOW
-declare -A BITRATES_MID
-declare -A BITRATES_HIGH
-
-BITRATES_LOW[4k]=10000
-BITRATES_MID[4k]=15000
-BITRATES_HIGH[4k]=20000
-
-BITRATES_LOW[1080p]=3000
-BITRATES_MID[1080p]=5000
-BITRATES_HIGH[1080p]=8000
-
-BITRATES_LOW[720p]=1500
-BITRATES_MID[720p]=2500
-BITRATES_HIGH[720p]=4000
-
-BITRATES_LOW[360p]=500
-BITRATES_MID[360p]=1000
-BITRATES_HIGH[360p]=1500
+# Phase 1: Single bitrate per resolution (TEST_MATRIX specification)
+declare -A RESOLUTION_BITRATES
+RESOLUTION_BITRATES[360p]=800
+RESOLUTION_BITRATES[720p]=2500
+RESOLUTION_BITRATES[1080p]=4500
+RESOLUTION_BITRATES[4k]=15000
 
 # Test matrix defaults
 PROTOCOLS=(rtmp rtsp srt)
 RESOLUTIONS=(4k 1080p 720p 360p)
-VIDEO_CODECS=(h264 h265 vp9)
+VIDEO_CODECS=(h264)  # Phase 1: H.264 only for baseline testing
 AUDIO_CODEC=aac
-CONNECTIONS=(1 2 5 10 20 50)
+CONNECTIONS=(1 5 10 20 50 100)  # Phase 1: Added 100, removed 2
 
 # Pilot option: override defaults if requested
 read -p "Run pilot subset only? (y/N): " RUN_PILOT
 if [[ "$RUN_PILOT" =~ ^[Yy] ]]; then
   log "Pilot mode: reducing matrix for quick validation"
-  PROTOCOLS=(rtmp)
+  PROTOCOLS=(rtmp srt)
   RESOLUTIONS=(1080p)
-  VIDEO_CODECS=(h264)
-  BITRATES_LOW[1080p]=3000
-  BITRATES_MID[1080p]=5000
-  BITRATES_HIGH[1080p]=8000
+  VIDEO_CODECS=(h264 h265 vp9)  # Pilot mode allows codec comparison
+  RESOLUTION_BITRATES[1080p]=4500
   CONNECTIONS=(1 5 10 20 50)
   
   # Use shorter duration for pilot
   DURATION_MINUTES=$PILOT_DURATION_MINUTES
-  log "Pilot mode: 2-minute tests, 5 connection counts (1,5,10,20,50), 3 bitrates (3000k,5000k,8000k)"
-  log "Pilot mode: Total tests = 15, estimated time = ~30 minutes"
+  log "Pilot mode: 2-minute tests, 5 connection counts (1,5,10,20,50), 2 protocols (RTMP, SRT)"
+  log "Pilot mode: 3 codecs (H.264, H.265, VP9) for codec comparison"
+  log "Pilot mode: Total tests = ~30, estimated time = ~60 minutes"
 fi
 
 
@@ -680,10 +666,8 @@ echo "Starting test sweep. Press Ctrl+C to abort. The orchestrator will stop whe
 
 for protocol in "${PROTOCOLS[@]}"; do
   for resolution in "${RESOLUTIONS[@]}"; do
-    # Determine bitrate set
-    low=${BITRATES_LOW[$resolution]}
-    mid=${BITRATES_MID[$resolution]}
-    high=${BITRATES_HIGH[$resolution]}
+    # Get single bitrate for this resolution (Phase 1: one bitrate per resolution)
+    bitrate=${RESOLUTION_BITRATES[$resolution]}
     for vcodec in "${VIDEO_CODECS[@]}"; do
       # Skip VP9 for non-SRT protocols (VP9 only works reliably with SRT/MPEGTS)
       if [[ "$vcodec" == "vp9" && "$protocol" != "srt" ]]; then
@@ -691,67 +675,57 @@ for protocol in "${PROTOCOLS[@]}"; do
         continue
       fi
       
-      for bitrate in "$low" "$mid" "$high"; do
+      for conn in "${CONNECTIONS[@]}"; do
         if (( ABORT == 1 )); then
-          log "Abort requested, breaking out of bitrate loop"
+          log "Abort requested, breaking out of connections loop"
           break
         fi
-        for conn in "${CONNECTIONS[@]}"; do
-          if (( ABORT == 1 )); then
-            log "Abort requested, breaking out of connections loop"
-            break
-          fi
-          # Break quickly if abort requested
-          if (( ABORT == 1 )); then
-            log "Abort requested, stopping sweep"
-            exit 1
-          fi
+        # Break quickly if abort requested
+        if (( ABORT == 1 )); then
+          log "Abort requested, stopping sweep"
+          exit 1
+        fi
 
-          # Check server health: CPU, Heap, Memory, Network
-          log "Checking server health..."
-          status=$(check_server_status)
-          IFS='|' read -r cpu heap mem net <<< "$status"
-          
-          # Validate CPU value
-          if [[ -z "$cpu" ]]; then
-            log "WARNING: Unable to get server CPU, continuing anyway..."
-            cpu="0.00"
-          fi
-          
-          # Log all metrics
-          log "Server Status: CPU=${cpu}% | Heap=${heap}% | Mem=${mem}% | Net=${net}Mbps"
-          
-          # Check CPU threshold
-          cpu_int=${cpu%.*}
-          if (( cpu_int >= 80 )); then
-            log "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
-            echo "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
+        # Check server health: CPU, Heap, Memory, Network
+        log "Checking server health..."
+        status=$(check_server_status)
+        IFS='|' read -r cpu heap mem net <<< "$status"
+        
+        # Validate CPU value
+        if [[ -z "$cpu" ]]; then
+          log "WARNING: Unable to get server CPU, continuing anyway..."
+          cpu="0.00"
+        fi
+        
+        # Log all metrics
+        log "Server Status: CPU=${cpu}% | Heap=${heap}% | Mem=${mem}% | Net=${net}Mbps"
+        
+        # Check CPU threshold
+        cpu_int=${cpu%.*}
+        if (( cpu_int >= 80 )); then
+          log "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
+          echo "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
+          exit 0
+        fi
+        
+        # Check Heap threshold (if available)
+        if [[ -n "$heap" ]] && [[ "$heap" != "0.00" ]] && [[ "$heap" != "N/A" ]]; then
+          heap_int=${heap%.*}
+          if (( heap_int >= 80 )); then
+            log "Server Heap >= 80% (current: ${heap}%). Halting further tests."
+            echo "Server Heap >= 80% (current: ${heap}%). Halting further tests."
             exit 0
           fi
-          
-          # Check Heap threshold (if available)
-          if [[ -n "$heap" ]] && [[ "$heap" != "0.00" ]] && [[ "$heap" != "N/A" ]]; then
-            heap_int=${heap%.*}
-            if (( heap_int >= 80 )); then
-              log "Server Heap >= 80% (current: ${heap}%). Halting further tests."
-              echo "Server Heap >= 80% (current: ${heap}%). Halting further tests."
-              exit 0
-            fi
-          fi
+        fi
 
-          run_single_experiment "$protocol" "$resolution" "$vcodec" "$bitrate" "$conn"
+        run_single_experiment "$protocol" "$resolution" "$vcodec" "$bitrate" "$conn"
 
-          # Cooldown between experiments - longer for pilot to let server stabilize
-          if [[ "$RUN_PILOT" =~ ^[Yy] ]]; then
-            log "Cooldown: waiting 10 seconds for server to stabilize..."
-            sleep 10
-          else
-            sleep 5
-          fi
-        done
+        # Phase 1: 30-second cooldown between experiments
+        log "Cooldown: waiting 30 seconds for server to stabilize..."
+        sleep 30
       done
     done
   done
 done
 
-echo "All experiments finished or stopped by CPU threshold. Results are in $RUNS_DIR"
+echo "All experiments finished or stopped by CPU/Heap threshold. Results are in $RUNS_DIR"
