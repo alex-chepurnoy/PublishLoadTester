@@ -259,21 +259,18 @@ def main():
     
     # Try to get heap data from remote_monitor.sh first (preferred), then jstat_gc.log (fallback)
     jstat_heap_used = []
-    jstat_heap_capacity = []
     
     if remote_monitor_paths:
-        # Parse all remote monitor CSV files and combine results
+        # Parse all remote monitor CSV files and combine results (only need used values)
         for rmon_path in remote_monitor_paths:
-            used, capacity = parse_remote_monitor(rmon_path)
+            used, _ = parse_remote_monitor(rmon_path)
             jstat_heap_used.extend(used)
-            jstat_heap_capacity.extend(capacity)
     
     # Fallback to jstat_gc.log if remote monitor didn't provide data
     if not jstat_heap_used and os.path.isfile(jstat_gc_path):
-        jstat_heap_used, jstat_heap_capacity = parse_jstat_gc(jstat_gc_path)
+        jstat_heap_used, _ = parse_jstat_gc(jstat_gc_path)
         # jstat_gc returns KB, convert to MB for consistency
         jstat_heap_used = [x / 1024 for x in jstat_heap_used]
-        jstat_heap_capacity = [x / 1024 for x in jstat_heap_capacity]
 
     # Simple aggregates - pidstat now includes RSS in tuple[3]
     pidstat_cpus = [x[2] for x in pidstat]
@@ -284,7 +281,6 @@ def main():
     
     # Java heap statistics (now in MB from remote_monitor, or converted from jstat KB)
     avg_heap_used_mb, max_heap_used_mb = aggregate(jstat_heap_used)
-    avg_heap_capacity_mb, max_heap_capacity_mb = aggregate(jstat_heap_capacity)
     
     # Network: try sar_net first, then ifstat
     if sar_net:
@@ -298,24 +294,21 @@ def main():
 
     avg_sar_cpu, max_sar_cpu = aggregate(sar)
 
-    # Per-stream derived metrics
-    cpu_per_stream = 0.0
-    mem_rss_kb = None
-    heap_used_mb = None
-    heap_capacity_mb = None
-    
-    if args.connections and args.connections > 0:
-        cpu_per_stream = (avg_sar_cpu / float(args.connections)) if avg_sar_cpu else 0.0
+    # Memory and heap metrics
+    mem_rss_mb = None
+    avg_heap_mb = None
+    max_heap_mb = None
     
     # Use Java heap statistics if available (now in MB)
     if avg_heap_used_mb > 0:
-        heap_used_mb = int(avg_heap_used_mb)
-    if avg_heap_capacity_mb > 0:
-        heap_capacity_mb = int(avg_heap_capacity_mb)
+        avg_heap_mb = int(avg_heap_used_mb)
+    if max_heap_used_mb > 0:
+        max_heap_mb = int(max_heap_used_mb)
     
     # Try to get memory from pidstat first, then fall back to wowza_proc.txt
+    # Convert KB to MB for consistency with heap values
     if avg_pid_mem > 0:
-        mem_rss_kb = int(avg_pid_mem)
+        mem_rss_mb = int(avg_pid_mem / 1024)
     else:
         # Try to read wowza_proc.txt for RSS (remote captured snapshot)
         wowza_proc = os.path.join(server_logs, 'wowza_proc.txt')
@@ -326,16 +319,16 @@ def main():
                     parts = line.split()
                     # ps -p pid -o pid,rss,vsz,pmem,pcpu,cmd -> pid rss vsz pmem pcpu cmd
                     if len(parts) >= 2:
-                        mem_rss_kb = int(parts[1])
+                        mem_rss_mb = int(int(parts[1]) / 1024)
             except Exception:
-                mem_rss_kb = None
+                mem_rss_mb = None
 
     # results CSV
     results_csv = os.path.join(run_dir, '..', 'results.csv')
     header = [
         'run_id','timestamp','protocol','resolution','video_codec','audio_codec','connections',
         'avg_sys_cpu_percent','max_sys_cpu_percent',
-        'cpu_per_stream_percent','mem_rss_kb','heap_used_mb','heap_capacity_mb'
+        'mem_rss_mb','avg_heap_mb','max_heap_mb'
     ]
 
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -349,10 +342,9 @@ def main():
         args.connections,
         f"{avg_sar_cpu:.2f}",
         f"{max_sar_cpu:.2f}",
-        f"{cpu_per_stream:.4f}",
-        f"{mem_rss_kb if mem_rss_kb is not None else ''}",
-        f"{heap_used_mb if heap_used_mb is not None else ''}",
-        f"{heap_capacity_mb if heap_capacity_mb is not None else ''}"
+        f"{mem_rss_mb if mem_rss_mb is not None else ''}",
+        f"{avg_heap_mb if avg_heap_mb is not None else ''}",
+        f"{max_heap_mb if max_heap_mb is not None else ''}"
     ]
 
     write_header = not os.path.isfile(results_csv)

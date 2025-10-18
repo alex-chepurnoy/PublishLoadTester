@@ -610,6 +610,171 @@ function check_server_status() {
   echo "$cpu|$heap|$mem|$net"
 }
 
+# Background heap monitor that continuously checks heap during test execution
+# Prints warnings at 80%, kills test if sustained at 80%+ for 30 seconds
+HEAP_MONITOR_PID=""
+HEAP_MONITOR_KILL_FILE=""
+HEAP_MONITOR_STATUS_FILE=""
+
+function start_heap_safety_monitor() {
+  local check_interval=${1:-10}  # Check every N seconds (default 10)
+  local warn_threshold=${2:-80}   # Warning threshold (default 80%)
+  local kill_duration=${3:-30}    # Kill if sustained >= threshold for N seconds (default 30)
+  
+  HEAP_MONITOR_KILL_FILE="$RUNS_DIR/.heap_monitor_kill_$$"
+  HEAP_MONITOR_STATUS_FILE="$RUNS_DIR/.heap_monitor_status_$$"
+  rm -f "$HEAP_MONITOR_KILL_FILE"
+  rm -f "$HEAP_MONITOR_STATUS_FILE"
+  
+  # Start background monitor with inlined heap detection logic
+  (
+    warning_count=0
+    
+    while true; do
+      # Check if parent orchestrator is still running
+      if ! kill -0 $$ 2>/dev/null; then
+        exit 0
+      fi
+      
+      # Inline heap detection (same logic as get_server_heap function)
+      # Step 1: Get jcmd output from remote server using Wowza's Java path
+      java_bin="/usr/local/WowzaStreamingEngine/java/bin"
+      
+      jcmd_output=$(ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
+        "wowza_pid=\$(ps aux | grep 'com.wowza.wms.bootstrap.Bootstrap start' | grep -v grep | awk '{print \$2}' | head -n1 || echo ''); \
+         if [ -n \"\$wowza_pid\" ]; then \
+           sudo $java_bin/jcmd \$wowza_pid GC.heap_info 2>/dev/null || $java_bin/jcmd \$wowza_pid GC.heap_info 2>/dev/null; \
+         fi" 2>/dev/null)
+      
+      # Step 2: Process jcmd output locally with AWK (avoids quoting issues)
+      if [[ -n "$jcmd_output" ]] && echo "$jcmd_output" | grep -q ZHeap; then
+        heap=$(echo "$jcmd_output" | awk '
+          BEGIN { used_kb=0; max_kb=0 }
+          /ZHeap.*used/ {
+            for(i=1; i<=NF; i++) {
+              if ($i == "used" && $(i+1) ~ /^[0-9]+M/) {
+                gsub(/[^0-9]/, "", $(i+1));
+                used_kb = $(i+1) * 1024;
+              }
+              if ($i == "max" && $(i+1) == "capacity" && $(i+2) ~ /^[0-9]+M/) {
+                gsub(/[^0-9]/, "", $(i+2));
+                max_kb = $(i+2) * 1024;
+              }
+            }
+          }
+          END {
+            if (max_kb > 0) {
+              pct = (used_kb / max_kb) * 100;
+              printf "%.2f", pct;
+            } else { print "0.00"; }
+          }')
+      else
+        heap="N/A"
+      fi
+      
+      # Get CPU using same logic as get_server_cpu function
+      cpu=$(ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" 'python3 - <<'\''PY'\''
+import time
+try:
+    with open("/proc/stat") as f:
+        l1=f.readline().split()[1:]
+    t1=sum(map(int,l1)); idle1=int(l1[3])
+    time.sleep(1)
+    with open("/proc/stat") as f:
+        l2=f.readline().split()[1:]
+    t2=sum(map(int,l2)); idle2=int(l2[3])
+    used=100*(1-(idle2-idle1)/(t2-t1))
+    print("%.2f" % used)
+except Exception as e:
+    print("0.00")
+PY' 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo "0.00")
+      
+      # Write status and log
+      echo "CPU:${cpu}|HEAP:${heap}" > "$HEAP_MONITOR_STATUS_FILE"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: Server CPU: ${cpu}% | Heap: ${heap}%"
+      
+      # Check if CPU or Heap exceed threshold
+      cpu_warning=0
+      heap_warning=0
+      
+      # Check CPU threshold
+      if [[ -n "$cpu" ]] && [[ "$cpu" != "N/A" ]] && [[ "$cpu" != "0.00" ]]; then
+        cpu_int=${cpu%.*}
+        if (( cpu_int >= warn_threshold )); then
+          cpu_warning=1
+        fi
+      fi
+      
+      # Check Heap threshold
+      if [[ -n "$heap" ]] && [[ "$heap" != "N/A" ]] && [[ "$heap" != "0.00" ]]; then
+        heap_int=${heap%.*}
+        if (( heap_int >= warn_threshold )); then
+          heap_warning=1
+        fi
+      fi
+      
+      # If either CPU or Heap is above threshold, increment warning count
+      if (( cpu_warning == 1 || heap_warning == 1 )); then
+        ((warning_count++))
+        
+        warning_msg="WARNING #${warning_count}:"
+        if (( cpu_warning == 1 )); then
+          warning_msg="${warning_msg} CPU at ${cpu}%"
+        fi
+        if (( heap_warning == 1 )); then
+          warning_msg="${warning_msg} Heap at ${heap}%"
+        fi
+        warning_msg="${warning_msg} (>= ${warn_threshold}%)"
+        
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${warning_msg}"
+        
+        # Kill after 2 consecutive warnings
+        if (( warning_count >= 2 )); then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] CRITICAL: ${warning_count} consecutive warnings - KILLING TEST"
+          echo "RESOURCE_CRITICAL" > "$HEAP_MONITOR_KILL_FILE"
+          pkill -f "stream_load_tester.sh" 2>/dev/null || true
+          pkill -f "ffmpeg.*rtmp\|ffmpeg.*srt" 2>/dev/null || true
+          exit 0
+        fi
+      else
+        # Reset warning count if both CPU and Heap are below threshold
+        if (( warning_count > 0 )); then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: CPU and Heap normalized (CPU: ${cpu}%, Heap: ${heap}%) - resetting warning counter"
+          warning_count=0
+        fi
+      fi
+      
+      sleep "$check_interval"
+    done
+  ) 2>&1 | tee -a "$ORCH_LOG" &
+  
+  HEAP_MONITOR_PID=$!
+  log "Started heap safety monitor (PID: $HEAP_MONITOR_PID, check every ${check_interval}s, warn threshold ${warn_threshold}%, kill after 2 consecutive warnings)"
+  echo "Heap safety monitor started - status updates every ${check_interval}s"
+}
+
+function stop_heap_safety_monitor() {
+  if [[ -n "$HEAP_MONITOR_PID" ]]; then
+    kill "$HEAP_MONITOR_PID" 2>/dev/null || true
+    wait "$HEAP_MONITOR_PID" 2>/dev/null || true
+    log "Stopped heap safety monitor (PID: $HEAP_MONITOR_PID)"
+    HEAP_MONITOR_PID=""
+  fi
+  
+  # Clean up status file
+  if [[ -f "$HEAP_MONITOR_STATUS_FILE" ]]; then
+    rm -f "$HEAP_MONITOR_STATUS_FILE"
+  fi
+  
+  # Check if test was killed by heap monitor
+  if [[ -f "$HEAP_MONITOR_KILL_FILE" ]]; then
+    rm -f "$HEAP_MONITOR_KILL_FILE"
+    return 1  # Signal that test was killed
+  fi
+  
+  return 0
+}
+
 function run_single_experiment() {
   local protocol="$1"
   local resolution="$2"
@@ -628,6 +793,9 @@ function run_single_experiment() {
   # Start remote monitors
   CURRENT_RUN="$run_id"
   remote_start_monitors "$run_id"
+  
+  # Start heap safety monitor (checks every 10 seconds, kills at 80%)
+  start_heap_safety_monitor 10 80
 
   # Build server URL based on protocol
   local server_url
@@ -657,6 +825,14 @@ function run_single_experiment() {
     --stream-name "$STREAM_BASE" \
     --duration "$DURATION_MINUTES" \
       2>&1 | tee "$local_run_dir/client_logs/stream_load_tester.log" || true
+
+  # Stop heap safety monitor and check if test was killed
+  local heap_killed=0
+  if ! stop_heap_safety_monitor; then
+    heap_killed=1
+    log "WARNING: Test was terminated by heap safety monitor"
+    echo "WARNING: Test was terminated due to high heap usage (>=80%)" | tee -a "$local_run_dir/client_logs/HEAP_KILL_WARNING.txt"
+  fi
 
   # After client exits, give server a short moment then stop monitors
   sleep 5
@@ -696,6 +872,9 @@ function run_single_experiment() {
   echo "=== Completed: $run_id ==="
 
   CURRENT_RUN=""
+  
+  # Return heap_killed status so caller can stop the sweep
+  return $heap_killed
 }
 
 echo "Starting test sweep. Press Ctrl+C to abort. The orchestrator will stop when server CPU >= 80%."
@@ -755,6 +934,14 @@ for protocol in "${PROTOCOLS[@]}"; do
         fi
 
         run_single_experiment "$protocol" "$resolution" "$vcodec" "$bitrate" "$conn"
+        experiment_status=$?
+        
+        # Check if heap safety monitor killed the test
+        if (( experiment_status == 1 )); then
+          log "Heap safety monitor triggered - stopping all tests to prevent server crash"
+          echo "Heap safety monitor triggered - stopping all tests to prevent server crash"
+          exit 1
+        fi
 
         # Phase 1: 30-second cooldown between experiments
         log "Cooldown: waiting 30 seconds for server to stabilize..."
