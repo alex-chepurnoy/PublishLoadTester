@@ -427,7 +427,7 @@ function get_server_heap() {
   # FIXED: Only use top-level heap summary to avoid double-counting
   if [[ -n "$jcmd_output" ]]; then
     heap_raw=$(echo "$jcmd_output" | awk '
-      BEGIN { total_kb=0; used_kb=0; found_summary=0 }
+      BEGIN { total_kb=0; used_kb=0; max_kb=0; found_summary=0 }
       
       # G1GC/ZGC/Shenandoah: Look for top-level summary line FIRST
       # These provide a single authoritative heap total. Prefer max capacity when available.
