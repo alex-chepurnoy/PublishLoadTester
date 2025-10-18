@@ -52,7 +52,7 @@ get_heap() {
   # Try PATH jcmd with sudo first
   if command -v jcmd >/dev/null 2>&1; then
     result=$(sudo jcmd $pid GC.heap_info 2>&1 | awk '
-      BEGIN { total_kb=0; used_kb=0 }
+      BEGIN { total_kb=0; used_kb=0; max_kb=0 }
       /PSYoungGen|ParOldGen|PSOldGen/ {
         if ($0 ~ /total [0-9]+K/) {
           for(i=1; i<=NF; i++) {
@@ -78,6 +78,11 @@ get_heap() {
             cap_mb = $(i+1); gsub(/[^0-9]/, "", cap_mb)
             total_kb = cap_mb * 1024
           }
+          # Capture max capacity
+          if ($i == "max" && $(i+1) == "capacity" && $(i+2) ~ /^[0-9]+M/) {
+            max_mb = $(i+2); gsub(/[^0-9]/, "", max_mb)
+            max_kb = max_mb * 1024
+          }
         }
       }
       /garbage-first heap|Shenandoah/ {
@@ -99,16 +104,19 @@ get_heap() {
         if(total_kb>0) {
           used_mb = used_kb / 1024
           capacity_mb = total_kb / 1024
-          pct = (used_kb / total_kb) * 100
-          printf "%.2f %.2f %.2f", used_mb, capacity_mb, pct
+          max_mb = max_kb / 1024
+          # Use max_kb for percentage if available, otherwise total_kb
+          denom = (max_kb > 0 ? max_kb : total_kb)
+          pct = (used_kb / denom) * 100
+          printf "%.2f %.2f %.2f %.2f", used_mb, capacity_mb, max_mb, pct
         } else {
-          print "0.00 0.00 0.00"
+          print "0.00 0.00 0.00 0.00"
         }
       }
-    ' 2>/dev/null || echo "0.00 0.00 0.00")
+    ' 2>/dev/null || echo "0.00 0.00 0.00 0.00")
   elif [ -x "$java_bin/jcmd" ]; then
     result=$(sudo $java_bin/jcmd $pid GC.heap_info 2>&1 | awk '
-      BEGIN { total_kb=0; used_kb=0 }
+      BEGIN { total_kb=0; used_kb=0; max_kb=0 }
       /PSYoungGen|ParOldGen|PSOldGen/ {
         if ($0 ~ /total [0-9]+K/) {
           for(i=1; i<=NF; i++) {
@@ -133,6 +141,11 @@ get_heap() {
             cap_mb = $(i+1); gsub(/[^0-9]/, "", cap_mb)
             total_kb = cap_mb * 1024
           }
+          # Capture max capacity
+          if ($i == "max" && $(i+1) == "capacity" && $(i+2) ~ /^[0-9]+M/) {
+            max_mb = $(i+2); gsub(/[^0-9]/, "", max_mb)
+            max_kb = max_mb * 1024
+          }
         }
       }
       /garbage-first heap|Shenandoah/ {
@@ -153,16 +166,19 @@ get_heap() {
         if(total_kb>0) {
           used_mb = used_kb / 1024
           capacity_mb = total_kb / 1024
-          pct = (used_kb / total_kb) * 100
-          printf "%.2f %.2f %.2f", used_mb, capacity_mb, pct
+          max_mb = max_kb / 1024
+          # Use max_kb for percentage if available, otherwise total_kb
+          denom = (max_kb > 0 ? max_kb : total_kb)
+          pct = (used_kb / denom) * 100
+          printf "%.2f %.2f %.2f %.2f", used_mb, capacity_mb, max_mb, pct
         } else {
-          print "0.00 0.00 0.00"
+          print "0.00 0.00 0.00 0.00"
         }
       }
-    ' 2>/dev/null || echo "0.00 0.00 0.00")
+    ' 2>/dev/null || echo "0.00 0.00 0.00 0.00")
   fi
   
-  echo "${result:-0.00 0.00 0.00}"
+  echo "${result:-0.00 0.00 0.00 0.00}"
 }
 
 # Get memory usage
