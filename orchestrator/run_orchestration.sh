@@ -405,50 +405,38 @@ function get_server_heap() {
      { [ -x $java_bin/jcmd ] && sudo $java_bin/jcmd $wowza_pid GC.heap_info 2>&1; }" 2>/dev/null || echo "")
   
   # Process jcmd output locally with AWK
+  # FIXED: Only use top-level heap summary to avoid double-counting
   if [[ -n "$jcmd_output" ]]; then
     heap_raw=$(echo "$jcmd_output" | awk '
-      BEGIN { total_kb=0; used_kb=0 }
-      # Parallel GC: PSYoungGen/ParOldGen/PSOldGen lines
-      /PSYoungGen|ParOldGen|PSOldGen/ {
-        # Look for pattern: "total 12345K, used 6789K"
-        if ($0 ~ /total [0-9]+K/) {
-          for(i=1; i<=NF; i++) {
-            if ($i == "total" && $(i+1) ~ /^[0-9]+K/) {
-              gsub(/K/, "", $(i+1))
-              total_kb += $(i+1)
-            }
-            if ($i == "used" && $(i+1) ~ /^[0-9]+K/) {
-              gsub(/K/, "", $(i+1))
-              used_kb += $(i+1)
-            }
-          }
-        }
-      }
-      # G1GC/ZGC/Shenandoah: single line with total and used
-      # ZGC outputs in MB: "ZHeap used 194M, capacity 496M"
-      # G1GC outputs in KB: "garbage-first heap total 524288K, used 194288K"
-      /garbage-first heap|ZHeap|Z Heap|Shenandoah/ {
-        # Check for MB format (ZGC)
-        if ($0 ~ /used [0-9]+M/ || $0 ~ /capacity [0-9]+M/ || $0 ~ /total [0-9]+M/) {
+      BEGIN { total_kb=0; used_kb=0; found_summary=0 }
+      
+      # G1GC/ZGC/Shenandoah: Look for top-level summary line FIRST
+      # These provide a single authoritative heap total. Prefer max capacity when available.
+      /^garbage-first heap[ \t]+total|^ZHeap[ \t]+used|^Z Heap[ \t]+used|^Shenandoah[ \t]+total/ {
+        found_summary=1
+        # ZGC format: "ZHeap used 194M, capacity 496M, max capacity 5416M"
+        if ($0 ~ /used [0-9]+M/ && $0 ~ /capacity [0-9]+M/) {
           for(i=1; i<=NF; i++) {
             if ($i == "used" && $(i+1) ~ /^[0-9]+M/) {
               gsub(/[^0-9]/, "", $(i+1))
-              used_kb = $(i+1) * 1024  # Convert MB to KB
+              used_kb = $(i+1) * 1024
             }
+            # capture regular capacity (committed)
             if ($i == "capacity" && $(i+1) ~ /^[0-9]+M/ && $(i-1) !~ /max/) {
               gsub(/[^0-9]/, "", $(i+1))
-              total_kb = $(i+1) * 1024  # Convert MB to KB
+              total_kb = $(i+1) * 1024
             }
-            if ($i == "total" && $(i+1) ~ /^[0-9]+M/) {
-              gsub(/[^0-9]/, "", $(i+1))
-              total_kb = $(i+1) * 1024  # Convert MB to KB
+            # capture max capacity when present: pattern "max capacity <N>M"
+            if ($i == "max" && $(i+1) == "capacity" && $(i+2) ~ /^[0-9]+M/) {
+              gsub(/[^0-9]/, "", $(i+2))
+              max_kb = $(i+2) * 1024
             }
           }
         }
-        # Check for KB format (G1GC, Shenandoah)
-        else if ($0 ~ /total [0-9]+K.*used [0-9]+K/ || $0 ~ /used [0-9]+K.*total [0-9]+K/) {
+        # G1GC/Shenandoah format: "garbage-first heap total 524288K, used 194288K"
+        else if ($0 ~ /total [0-9]+K/ && $0 ~ /used [0-9]+K/) {
           for(i=1; i<=NF; i++) {
-            if ($i == "total" && $(i+1) ~ /^[0-9]+K/) {
+            if ($i == "total" && $(i+1) ~ /^[0-9]+K,?$/) {
               gsub(/[^0-9]/, "", $(i+1))
               total_kb = $(i+1)
             }
@@ -459,8 +447,28 @@ function get_server_heap() {
           }
         }
       }
+      
+      # Parallel GC: Only process if we haven NOT found a summary line
+      # Sum up PSYoungGen + ParOldGen (separate regions)
+      !found_summary && /^[ \t]*(PSYoungGen|ParOldGen|PSOldGen)[ \t]+total/ {
+        if ($0 ~ /total [0-9]+K/) {
+          for(i=1; i<=NF; i++) {
+            if ($i == "total" && $(i+1) ~ /^[0-9]+K,?$/) {
+              gsub(/[^0-9]/, "", $(i+1))
+              total_kb += $(i+1)
+            }
+            if ($i == "used" && $(i+1) ~ /^[0-9]+K,?$/) {
+              gsub(/[^0-9]/, "", $(i+1))
+              used_kb += $(i+1)
+            }
+          }
+        }
+      }
+      
       END {
-        if(total_kb > 0) printf "%.2f", (used_kb / total_kb) * 100
+        # Prefer max_kb (if present) as the denominator per new policy, otherwise fall back to total_kb
+        denom = (max_kb > 0 ? max_kb : total_kb)
+        if(denom > 0) printf "%.2f", (used_kb / denom) * 100
         else print "0.00"
       }
     ')

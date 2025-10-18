@@ -36,7 +36,7 @@ echo ""
 # Test AWK parsing
 echo "Step 3: Testing AWK parsing..."
 heap_pct=$(echo "$jcmd_output" | awk '
-  BEGIN { total_kb=0; used_kb=0 }
+  BEGIN { total_kb=0; used_kb=0; max_kb=0 }
   /ZHeap|Z Heap/ {
     if ($0 ~ /used [0-9]+M/ || $0 ~ /capacity [0-9]+M/) {
       for(i=1; i<=NF; i++) {
@@ -50,12 +50,19 @@ heap_pct=$(echo "$jcmd_output" | awk '
           total_kb = $(i+1) * 1024
           print "DEBUG: total_kb=" total_kb > "/dev/stderr"
         }
+        # capture "max capacity <N>M"
+        if ($i == "max" && $(i+1) == "capacity" && $(i+2) ~ /^[0-9]+M/) {
+          gsub(/[^0-9]/, "", $(i+2))
+          max_kb = $(i+2) * 1024
+          print "DEBUG: max_kb=" max_kb > "/dev/stderr"
+        }
       }
     }
   }
   END {
-    print "DEBUG: Final total_kb=" total_kb ", used_kb=" used_kb > "/dev/stderr"
-    if(total_kb > 0) printf "%.2f", (used_kb / total_kb) * 100
+    print "DEBUG: Final total_kb=" total_kb ", used_kb=" used_kb ", max_kb=" max_kb > "/dev/stderr"
+    denom = (max_kb > 0 ? max_kb : total_kb)
+    if(denom > 0) printf "%.2f", (used_kb / denom) * 100
     else print "0.00"
   }
 ')

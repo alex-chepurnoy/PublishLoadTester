@@ -187,8 +187,8 @@ echo "Log file: $LOG_FILE"
 echo "Interval: ${INTERVAL}s"
 echo
 
-# Write header
-echo "TIMESTAMP,CPU_PCT,HEAP_USED_MB,HEAP_CAPACITY_MB,HEAP_PCT,MEM_PCT,NET_MBPS,WOWZA_PID" > "$LOG_FILE"
+# Write header (added HEAP_MAX_MB)
+echo "TIMESTAMP,CPU_PCT,HEAP_USED_MB,HEAP_CAPACITY_MB,HEAP_MAX_MB,HEAP_PCT,MEM_PCT,NET_MBPS,WOWZA_PID" > "$LOG_FILE"
 
 # Get initial PID
 WOWZA_PID=$(get_wowza_pid)
@@ -213,11 +213,12 @@ while true; do
   NET=$(get_network)
   
   if [[ -n "$WOWZA_PID" ]]; then
-    # get_heap returns "used_mb capacity_mb percentage"
-    HEAP_DATA=$(get_heap "$WOWZA_PID")
-    HEAP_USED_MB=$(echo "$HEAP_DATA" | awk '{print $1}')
-    HEAP_CAPACITY_MB=$(echo "$HEAP_DATA" | awk '{print $2}')
-    HEAP_PCT=$(echo "$HEAP_DATA" | awk '{print $3}')
+  # get_heap returns "used_mb capacity_mb max_mb percentage"
+  HEAP_DATA=$(get_heap "$WOWZA_PID")
+  HEAP_USED_MB=$(echo "$HEAP_DATA" | awk '{print $1}')
+  HEAP_CAPACITY_MB=$(echo "$HEAP_DATA" | awk '{print $2}')
+  HEAP_MAX_MB=$(echo "$HEAP_DATA" | awk '{print $3}')
+  HEAP_PCT=$(echo "$HEAP_DATA" | awk '{print $4}')
   else
     HEAP_USED_MB="N/A"
     HEAP_CAPACITY_MB="N/A"
@@ -225,7 +226,7 @@ while true; do
   fi
   
   # Log to file
-  echo "$TIMESTAMP,$CPU,$HEAP_USED_MB,$HEAP_CAPACITY_MB,$HEAP_PCT,$MEM,$NET,$WOWZA_PID" >> "$LOG_FILE"
+  echo "$TIMESTAMP,$CPU,$HEAP_USED_MB,$HEAP_CAPACITY_MB,$HEAP_MAX_MB,$HEAP_PCT,$MEM,$NET,$WOWZA_PID" >> "$LOG_FILE"
   
   # Also print to stdout (for debugging)
   echo "[$TIMESTAMP] CPU: ${CPU}% | Heap: ${HEAP_USED_MB}/${HEAP_CAPACITY_MB}MB (${HEAP_PCT}%) | Mem: ${MEM}% | Net: ${NET} Mbps | PID: ${WOWZA_PID:-N/A}"

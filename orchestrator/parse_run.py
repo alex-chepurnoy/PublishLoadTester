@@ -181,11 +181,22 @@ def parse_remote_monitor(path):
             try:
                 heap_used = row.get('HEAP_USED_MB', '').strip()
                 heap_capacity = row.get('HEAP_CAPACITY_MB', '').strip()
-                
-                # Skip N/A values
-                if heap_used and heap_used != 'N/A' and heap_capacity and heap_capacity != 'N/A':
-                    heap_used_vals.append(float(heap_used))
-                    heap_capacity_vals.append(float(heap_capacity))
+                heap_max = row.get('HEAP_MAX_MB', '').strip()
+
+                # Prefer max if present; otherwise use capacity. Skip N/A values
+                if heap_used and heap_used != 'N/A':
+                    used_val = float(heap_used)
+                    # choose denominator
+                    if heap_max and heap_max != 'N/A':
+                        denom_val = float(heap_max)
+                    elif heap_capacity and heap_capacity != 'N/A':
+                        denom_val = float(heap_capacity)
+                    else:
+                        denom_val = None
+
+                    if denom_val is not None:
+                        heap_used_vals.append(used_val)
+                        heap_capacity_vals.append(denom_val)
             except (ValueError, KeyError):
                 pass
     
