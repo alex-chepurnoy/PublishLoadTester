@@ -410,18 +410,23 @@ function get_server_heap() {
     return
   fi
   
+  log "DEBUG: Detected Wowza PID: $wowza_pid"
+  
   # Method 1: Try jcmd (primary - fast, human-readable)
-  # Try both PATH and Wowza's java/bin directory
+  # Try both PATH and Wowza's java/bin directory with sudo (required for Wowza process)
   # Supports all GC types: Parallel, G1, ZGC, Shenandoah, Serial
-  # Try without sudo first, then with sudo if permission denied
   
   # Get jcmd output from remote server (without AWK processing)
+  # Try sudo first since Wowza typically requires elevated privileges
   local jcmd_output
   jcmd_output=$(timeout 10 ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
-    "{ command -v jcmd >/dev/null 2>&1 && jcmd $wowza_pid GC.heap_info 2>&1; } || \
-     { [ -x $java_bin/jcmd ] && $java_bin/jcmd $wowza_pid GC.heap_info 2>&1; } || \
+    "{ [ -x $java_bin/jcmd ] && sudo $java_bin/jcmd $wowza_pid GC.heap_info 2>&1; } || \
      { command -v jcmd >/dev/null 2>&1 && sudo jcmd $wowza_pid GC.heap_info 2>&1; } || \
-     { [ -x $java_bin/jcmd ] && sudo $java_bin/jcmd $wowza_pid GC.heap_info 2>&1; }" 2>/dev/null || echo "")
+     { [ -x $java_bin/jcmd ] && $java_bin/jcmd $wowza_pid GC.heap_info 2>&1; } || \
+     { command -v jcmd >/dev/null 2>&1 && jcmd $wowza_pid GC.heap_info 2>&1; }" 2>/dev/null || echo "")
+  
+  log "DEBUG: jcmd output length: ${#jcmd_output}"
+  log "DEBUG: jcmd first 3 lines: $(echo "$jcmd_output" | head -n3 | tr '\n' ' ')"
   
   # Process jcmd output locally with AWK
   # FIXED: Only use top-level heap summary to avoid double-counting
@@ -431,9 +436,11 @@ function get_server_heap() {
       
       # G1GC/ZGC/Shenandoah: Look for top-level summary line FIRST
       # These provide a single authoritative heap total. Prefer max capacity when available.
-      /^garbage-first heap[ \t]+total|^ZHeap[ \t]+used|^Z Heap[ \t]+used|^Shenandoah[ \t]+total/ {
+      # Note: jcmd output may start with PID prefix like "542363:  ZHeap"
+      /garbage-first heap[ \t]+total|ZHeap[ \t]+used|Z Heap[ \t]+used|Shenandoah[ \t]+total/ {
         found_summary=1
         # ZGC format: "ZHeap used 194M, capacity 496M, max capacity 5416M"
+        # or with PID: "542363:  ZHeap           used 846M, capacity 1088M, max capacity 5416M"
         if ($0 ~ /used [0-9]+M/ && $0 ~ /capacity [0-9]+M/) {
           for(i=1; i<=NF; i++) {
             if ($i == "used" && $(i+1) ~ /^[0-9]+M/) {
@@ -495,13 +502,15 @@ function get_server_heap() {
     heap_raw="0.00"
   fi
   
+  log "DEBUG: heap_raw after jcmd: $heap_raw"
+  
   # Fallback 1: Try jstat if jcmd failed
   if [[ -z "$heap_raw" ]] || [[ "$heap_raw" == "0.00" ]]; then
     heap_raw=$(timeout 10 ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
-      "{ command -v jstat >/dev/null 2>&1 && jstat -gc $wowza_pid 2>&1; } || \
-       { [ -x $java_bin/jstat ] && $java_bin/jstat -gc $wowza_pid 2>&1; } || \
+      "{ [ -x $java_bin/jstat ] && sudo $java_bin/jstat -gc $wowza_pid 2>&1; } || \
        { command -v jstat >/dev/null 2>&1 && sudo jstat -gc $wowza_pid 2>&1; } || \
-       { [ -x $java_bin/jstat ] && sudo $java_bin/jstat -gc $wowza_pid 2>&1; } | tail -n1 | awk '
+       { [ -x $java_bin/jstat ] && $java_bin/jstat -gc $wowza_pid 2>&1; } || \
+       { command -v jstat >/dev/null 2>&1 && jstat -gc $wowza_pid 2>&1; } | tail -n1 | awk '
         {
           used=\$3+\$4+\$6+\$8;
           capacity=\$1+\$2+\$5+\$7;
@@ -517,10 +526,10 @@ function get_server_heap() {
   if [[ -z "$heap_raw" ]] || [[ "$heap_raw" == "0.00" ]]; then
     log "WARNING: Both jcmd and jstat failed. Using jmap as last resort (may cause JVM pause)..."
     heap_raw=$(timeout 10 ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
-      "{ command -v jmap >/dev/null 2>&1 && jmap -heap $wowza_pid 2>&1; } || \
-       { [ -x $java_bin/jmap ] && $java_bin/jmap -heap $wowza_pid 2>&1; } || \
+      "{ [ -x $java_bin/jmap ] && sudo $java_bin/jmap -heap $wowza_pid 2>&1; } || \
        { command -v jmap >/dev/null 2>&1 && sudo jmap -heap $wowza_pid 2>&1; } || \
-       { [ -x $java_bin/jmap ] && sudo $java_bin/jmap -heap $wowza_pid 2>&1; } | awk '
+       { [ -x $java_bin/jmap ] && $java_bin/jmap -heap $wowza_pid 2>&1; } || \
+       { command -v jmap >/dev/null 2>&1 && jmap -heap $wowza_pid 2>&1; } | awk '
         /used =/ { gsub(/[^0-9]/, \"\", \$3); used=\$3 }
         /capacity =/ { gsub(/[^0-9]/, \"\", \$3); capacity=\$3 }
         END { if(capacity>0) printf \"%.2f\", (used/capacity)*100; else print \"0.00\" }
