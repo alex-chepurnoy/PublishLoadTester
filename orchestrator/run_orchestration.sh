@@ -127,9 +127,28 @@ SSH_USER="${SSH_USER:-ubuntu}"
 read -p "Wowza server IP/address: " SERVER_IP
 if [[ -z "$SERVER_IP" ]]; then echo "Server IP required"; exit 1; fi
 
-read -p "Application name on Wowza (app): " APP_NAME
-if [[ -z "$APP_NAME" ]]; then echo "Application name required"; exit 1; fi
+echo ""
+echo "Protocol-specific configuration (RTMP):"
+read -p "  RTMP application name [live]: " RTMP_APP_NAME
+RTMP_APP_NAME="${RTMP_APP_NAME:-live}"
+read -p "  RTMP port [1935]: " RTMP_PORT
+RTMP_PORT="${RTMP_PORT:-1935}"
 
+echo ""
+echo "Protocol-specific configuration (SRT):"
+read -p "  SRT application name [live]: " SRT_APP_NAME
+SRT_APP_NAME="${SRT_APP_NAME:-live}"
+read -p "  SRT port [9999]: " SRT_PORT
+SRT_PORT="${SRT_PORT:-9999}"
+
+echo ""
+echo "Protocol-specific configuration (RTSP):"
+read -p "  RTSP application name [live]: " RTSP_APP_NAME
+RTSP_APP_NAME="${RTSP_APP_NAME:-live}"
+read -p "  RTSP port [554]: " RTSP_PORT
+RTSP_PORT="${RTSP_PORT:-554}"
+
+echo ""
 read -p "Base stream name (test stream prefix) [test]: " STREAM_BASE
 STREAM_BASE="${STREAM_BASE:-test}"
 
@@ -605,13 +624,13 @@ function run_single_experiment() {
   local server_url
   case "$protocol" in
     rtmp)
-      server_url="rtmp://$SERVER_IP:1935/$APP_NAME"
+      server_url="rtmp://$SERVER_IP:$RTMP_PORT/$RTMP_APP_NAME"
       ;;
     rtsp)
-      server_url="rtsp://$SERVER_IP:554/$APP_NAME"
+      server_url="rtsp://$SERVER_IP:$RTSP_PORT/$RTSP_APP_NAME"
       ;;
     srt)
-      server_url="srt://$SERVER_IP:9999?streamid=$APP_NAME"
+      server_url="srt://$SERVER_IP:$SRT_PORT?streamid=$SRT_APP_NAME"
       ;;
   esac
 

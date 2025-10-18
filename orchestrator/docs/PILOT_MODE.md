@@ -13,34 +13,59 @@
 **New Pilot:**
 - Duration: **2 minutes per test** ⚡
 - Connections: **1, 5, 10, 20, 50** (5 counts)
-- Bitrates: 3000k, 5000k, 8000k (3 bitrates)
-- **Total:** 15 tests × 2 min = **~30 minutes** ✅
+ - Bitrate: 4500k (single bitrate used by orchestrator for 1080p)
+ - **Total:** tests depend on codecs/protocols selected (see matrix below) — typically ~25 tests × 2 min = **~50 minutes** ✅
 
 ---
 
 ## Test Matrix
 
-### Pilot Mode Test Combinations
 
-| Test # | Connections | Bitrate | Duration | Protocol | Resolution | Codec |
-|--------|-------------|---------|----------|----------|------------|-------|
-| 1      | 1           | 3000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 2      | 5           | 3000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 3      | 10          | 3000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 4      | 20          | 3000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 5      | 50          | 3000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 6      | 1           | 5000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 7      | 5           | 5000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 8      | 10          | 5000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 9      | 20          | 5000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 10     | 50          | 5000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 11     | 1           | 8000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 12     | 5           | 8000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 13     | 10          | 8000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 14     | 20          | 8000k   | 2 min    | RTMP     | 1080p      | H.264 |
-| 15     | 50          | 8000k   | 2 min    | RTMP     | 1080p      | H.264 |
+### Pilot Mode Test Combinations (actual, based on orchestrator code)
+
+The orchestrator sets:
+- PROTOCOLS=(rtmp srt)
+- RESOLUTIONS=(1080p)
+- RESOLUTION_BITRATES[1080p]=4500
+- VIDEO_CODECS=(h264 h265 vp9)  # note: vp9 is only run for SRT in the sweep
+- CONNECTIONS=(1 5 10 20 50)
+
+The effective pilot combinations (protocol × codec × connection) executed by the script are:
+
+| Test # | Protocol | Codec | Connections | Bitrate | Duration | Resolution |
+|--------|----------|-------|-------------|---------|----------|------------|
+| 1      | RTMP     | H.264 | 1           | 4500k   | 2 min    | 1080p      |
+| 2      | RTMP     | H.264 | 5           | 4500k   | 2 min    | 1080p      |
+| 3      | RTMP     | H.264 | 10          | 4500k   | 2 min    | 1080p      |
+| 4      | RTMP     | H.264 | 20          | 4500k   | 2 min    | 1080p      |
+| 5      | RTMP     | H.264 | 50          | 4500k   | 2 min    | 1080p      |
+| 6      | RTMP     | H.265 | 1           | 4500k   | 2 min    | 1080p      |
+| 7      | RTMP     | H.265 | 5           | 4500k   | 2 min    | 1080p      |
+| 8      | RTMP     | H.265 | 10          | 4500k   | 2 min    | 1080p      |
+| 9      | RTMP     | H.265 | 20          | 4500k   | 2 min    | 1080p      |
+| 10     | RTMP     | H.265 | 50          | 4500k   | 2 min    | 1080p      |
+| 11     | SRT      | H.264 | 1           | 4500k   | 2 min    | 1080p      |
+| 12     | SRT      | H.264 | 5           | 4500k   | 2 min    | 1080p      |
+| 13     | SRT      | H.264 | 10          | 4500k   | 2 min    | 1080p      |
+| 14     | SRT      | H.264 | 20          | 4500k   | 2 min    | 1080p      |
+| 15     | SRT      | H.264 | 50          | 4500k   | 2 min    | 1080p      |
+| 16     | SRT      | H.265 | 1           | 4500k   | 2 min    | 1080p      |
+| 17     | SRT      | H.265 | 5           | 4500k   | 2 min    | 1080p      |
+| 18     | SRT      | H.265 | 10          | 4500k   | 2 min    | 1080p      |
+| 19     | SRT      | H.265 | 20          | 4500k   | 2 min    | 1080p      |
+| 20     | SRT      | H.265 | 50          | 4500k   | 2 min    | 1080p      |
+| 21     | SRT      | VP9   | 1           | 4500k   | 2 min    | 1080p      |
+| 22     | SRT      | VP9   | 5           | 4500k   | 2 min    | 1080p      |
+| 23     | SRT      | VP9   | 10          | 4500k   | 2 min    | 1080p      |
+| 24     | SRT      | VP9   | 20          | 4500k   | 2 min    | 1080p      |
+| 25     | SRT      | VP9   | 50          | 4500k   | 2 min    | 1080p      |
 
 ---
+
+> Notes:
+- VP9 is skipped for RTMP by the orchestrator (the script contains a check that skips VP9 when protocol != srt).
+- The script sets the bitrate for 1080p to 4500k during pilot mode (see `run_orchestration.sh`).
+
 
 ## Timing Breakdown
 
@@ -57,14 +82,14 @@ Total:    120 seconds = 2 minutes
 ### Total Pilot Run Time
 
 ```
-15 tests × 2 minutes = 30 minutes base time
-+ 5 seconds between tests = ~1 minute overhead
-+ Server monitoring overhead = ~1-2 minutes
-────────────────────────────────────────────
-Estimated Total: ~30-33 minutes
+15 tests × 2 minutes = 30 minutes base time (per protocol)
+× 2 protocols (RTMP + SRT) = 60 minutes base time
++ small overhead between tests and server monitoring = ~1-4 minutes
+────────────────────────────────────────────────────────
+Estimated Total: ~60-64 minutes (pilot mode covering both RTMP and SRT)
 ```
 
-**Much better than the previous 108 minutes!** ⚡
+**Much better than the previous 108 minutes for a full matrix — this pilot still provides fast validation while covering two protocols.** ⚡
 
 ---
 
@@ -144,7 +169,8 @@ Run pilot subset only? (y/N): y
 ```
 Pilot mode: reducing matrix for quick validation
 Pilot mode: 2-minute tests, 5 connection counts (1,5,10,20,50), 3 bitrates (3000k,5000k,8000k)
-Pilot mode: Total tests = 15, estimated time = ~30 minutes
+Pilot mode: Protocols = RTMP, SRT
+Pilot mode: Total tests = 15 per protocol (≈30 total), estimated time = ~60 minutes
 ```
 
 ---
