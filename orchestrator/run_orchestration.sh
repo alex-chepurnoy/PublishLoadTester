@@ -244,7 +244,7 @@ RESOLUTION_BITRATES[4k]=15000
 
 # Test matrix defaults
 PROTOCOLS=(rtmp rtsp srt)
-RESOLUTIONS=(4k 1080p 720p 360p)
+RESOLUTIONS=(360p 720p 1080p 4k)  # Phase 2: Lowest to highest resolution
 VIDEO_CODECS=(h264)  # Phase 1: H.264 only for baseline testing
 AUDIO_CODEC=aac
 CONNECTIONS=(1 5 10 20 50 100)  # Phase 1: Added 100, removed 2
@@ -252,20 +252,131 @@ CONNECTIONS=(1 5 10 20 50 100)  # Phase 1: Added 100, removed 2
 # Pilot option: override defaults if requested
 read -p "Run pilot subset only? (y/N): " RUN_PILOT
 if [[ "$RUN_PILOT" =~ ^[Yy] ]]; then
-  log "Pilot mode: reducing matrix for quick validation"
+  log "Pilot mode: reducing matrix for quick validation (Phase 2: resolution-first)"
   PROTOCOLS=(rtmp srt)
-  RESOLUTIONS=(1080p)
-  VIDEO_CODECS=(h264 h265 vp9)  # Pilot mode allows codec comparison
+  RESOLUTIONS=(720p 1080p)  # Phase 2: Test 2 resolutions
+  VIDEO_CODECS=(h264)  # Phase 2: Single codec only
+  RESOLUTION_BITRATES[720p]=2500
   RESOLUTION_BITRATES[1080p]=4500
-  CONNECTIONS=(1 5 10 20 50)
+  CONNECTIONS=(1 5 10 20)  # Phase 2: 4 connection levels
   
   # Use shorter duration for pilot
   DURATION_MINUTES=$PILOT_DURATION_MINUTES
-  log "Pilot mode: 2-minute tests, 5 connection counts (1,5,10,20,50), 2 protocols (RTMP, SRT)"
-  log "Pilot mode: 3 codecs (H.264, H.265, VP9) for codec comparison"
-  log "Pilot mode: Total tests = ~30, estimated time = ~60 minutes"
+  log "Pilot mode: 2-minute tests, 2 resolutions (720p,1080p), 2 protocols (RTMP, SRT), 4 connection counts (1,5,10,20)"
+  log "Pilot mode: Single codec (H.264), Total tests = 2×2×4 = 16, estimated time = ~35 minutes"
 fi
 
+# Phase 4.2.2: Protocol/Codec Selector
+echo ""
+echo "══════════════════════════════════════════════════════════════"
+echo "  Protocol Selection (Phase 4.2.2)"
+echo "══════════════════════════════════════════════════════════════"
+echo ""
+echo "Select protocols to test:"
+echo "  1) RTMP only"
+echo "  2) RTSP only"
+echo "  3) SRT only"
+echo "  4) RTMP + RTSP"
+echo "  5) RTMP + SRT"
+echo "  6) RTSP + SRT"
+echo "  7) ALL protocols (RTMP + RTSP + SRT)"
+echo ""
+read -p "Enter selection [1-7] (default: 7 - ALL): " PROTOCOL_CHOICE
+PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-7}
+
+case "$PROTOCOL_CHOICE" in
+  1)
+    PROTOCOLS=(rtmp)
+    log "🎯 Protocol selection: RTMP only"
+    ;;
+  2)
+    PROTOCOLS=(rtsp)
+    log "🎯 Protocol selection: RTSP only"
+    ;;
+  3)
+    PROTOCOLS=(srt)
+    log "🎯 Protocol selection: SRT only"
+    ;;
+  4)
+    PROTOCOLS=(rtmp rtsp)
+    log "🎯 Protocol selection: RTMP + RTSP"
+    ;;
+  5)
+    PROTOCOLS=(rtmp srt)
+    log "🎯 Protocol selection: RTMP + SRT"
+    ;;
+  6)
+    PROTOCOLS=(rtsp srt)
+    log "🎯 Protocol selection: RTSP + SRT"
+    ;;
+  7)
+    PROTOCOLS=(rtmp rtsp srt)
+    log "🎯 Protocol selection: ALL protocols (RTMP + RTSP + SRT)"
+    ;;
+  *)
+    log "⚠️  Invalid selection, defaulting to ALL protocols"
+    PROTOCOLS=(rtmp rtsp srt)
+    ;;
+esac
+
+# Codec selector (optional - Phase 4.2.2)
+echo ""
+echo "Select video codec(s) to test:"
+echo "  1) H.264 only (baseline)"
+echo "  2) H.265 only"
+echo "  3) VP9 only"
+echo "  4) H.264 + H.265"
+echo "  5) ALL codecs (H.264 + H.265 + VP9)"
+echo ""
+read -p "Enter selection [1-5] (default: 1 - H.264 only): " CODEC_CHOICE
+CODEC_CHOICE=${CODEC_CHOICE:-1}
+
+case "$CODEC_CHOICE" in
+  1)
+    VIDEO_CODECS=(h264)
+    log "🎯 Codec selection: H.264 only"
+    ;;
+  2)
+    VIDEO_CODECS=(h265)
+    log "🎯 Codec selection: H.265 only"
+    ;;
+  3)
+    VIDEO_CODECS=(vp9)
+    log "🎯 Codec selection: VP9 only"
+    ;;
+  4)
+    VIDEO_CODECS=(h264 h265)
+    log "🎯 Codec selection: H.264 + H.265"
+    ;;
+  5)
+    VIDEO_CODECS=(h264 h265 vp9)
+    log "🎯 Codec selection: ALL codecs (H.264 + H.265 + VP9)"
+    ;;
+  *)
+    log "⚠️  Invalid selection, defaulting to H.264 only"
+    VIDEO_CODECS=(h264)
+    ;;
+esac
+
+# Calculate and display test matrix size
+NUM_PROTOCOLS=${#PROTOCOLS[@]}
+NUM_RESOLUTIONS=${#RESOLUTIONS[@]}
+NUM_CODECS=${#VIDEO_CODECS[@]}
+NUM_CONNECTIONS=${#CONNECTIONS[@]}
+TOTAL_TESTS=$((NUM_PROTOCOLS * NUM_RESOLUTIONS * NUM_CODECS * NUM_CONNECTIONS))
+
+echo ""
+echo "══════════════════════════════════════════════════════════════"
+echo "  Test Matrix Summary"
+echo "══════════════════════════════════════════════════════════════"
+log "📊 Protocols: ${NUM_PROTOCOLS} (${PROTOCOLS[*]})"
+log "📊 Resolutions: ${NUM_RESOLUTIONS} (${RESOLUTIONS[*]})"
+log "📊 Codecs: ${NUM_CODECS} (${VIDEO_CODECS[*]})"
+log "📊 Connection levels: ${NUM_CONNECTIONS} (${CONNECTIONS[*]})"
+log "📊 Total tests: ${TOTAL_TESTS}"
+log "📊 Estimated time: ~$((TOTAL_TESTS * (DURATION_MINUTES + 2))) minutes (with cooldowns)"
+echo "══════════════════════════════════════════════════════════════"
+echo ""
 
 function remote_dir_for() {
   local run_id="$1"
@@ -879,18 +990,23 @@ function run_single_experiment() {
 
 echo "Starting test sweep. Press Ctrl+C to abort. The orchestrator will stop when server CPU >= 80%."
 
-for protocol in "${PROTOCOLS[@]}"; do
-  for resolution in "${RESOLUTIONS[@]}"; do
-    # Get single bitrate for this resolution (Phase 1: one bitrate per resolution)
-    bitrate=${RESOLUTION_BITRATES[$resolution]}
-    for vcodec in "${VIDEO_CODECS[@]}"; do
-      # Skip VP9 for non-SRT protocols (VP9 only works reliably with SRT/MPEGTS)
-      if [[ "$vcodec" == "vp9" && "$protocol" != "srt" ]]; then
-        log "Skipping VP9 for $protocol (VP9 only supported with SRT protocol)"
-        continue
-      fi
-      
-      for conn in "${CONNECTIONS[@]}"; do
+# Phase 4.2.1: Track maximum capacity per protocol/resolution
+last_successful_conn=0
+declare -A MAX_CAPACITY
+
+# Phase 2: Resolution-first test order
+for resolution in "${RESOLUTIONS[@]}"; do
+  # Get single bitrate for this resolution (Phase 1: one bitrate per resolution)
+  bitrate=${RESOLUTION_BITRATES[$resolution]}
+  vcodec="h264"  # Phase 2: Single codec (H.264)
+  
+  log "===== Starting Resolution: ${resolution} (${bitrate}k, ${vcodec^^}) ====="
+  echo "===== Starting Resolution: ${resolution} (${bitrate}k, ${vcodec^^}) ====="
+  
+  for protocol in "${PROTOCOLS[@]}"; do
+    log "  Protocol: ${protocol^^}"
+    
+    for conn in "${CONNECTIONS[@]}"; do
         if (( ABORT == 1 )); then
           log "Abort requested, breaking out of connections loop"
           break
@@ -901,6 +1017,10 @@ for protocol in "${PROTOCOLS[@]}"; do
           exit 1
         fi
 
+        # Phase 2: Clear test identification
+        log "    → Testing: ${protocol^^}, ${conn} connection(s)"
+        echo "    → Testing: ${protocol^^}, ${conn} connection(s)"
+        
         # Check server health: CPU, Heap, Memory, Network
         log "Checking server health..."
         status=$(check_server_status)
@@ -915,26 +1035,36 @@ for protocol in "${PROTOCOLS[@]}"; do
         # Log all metrics
         log "Server Status: CPU=${cpu}% | Heap=${heap}% | Mem=${mem}% | Net=${net}Mbps"
         
-        # Check CPU threshold
+        # Phase 4.2.1: Check CPU threshold - skip remaining connections, continue to next protocol
         cpu_int=${cpu%.*}
         if (( cpu_int >= 80 )); then
-          log "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
-          echo "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
-          exit 0
+          log "Server CPU >= 80% (current: ${cpu}%). Maximum capacity for ${protocol} ${resolution}: ${last_successful_conn} connections"
+          echo "⚠️  Maximum capacity reached: ${last_successful_conn} connections for ${protocol^^} ${resolution}"
+          MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"
+          log "Skipping remaining connections for ${protocol} ${resolution} (current attempt: ${conn})"
+          break  # Exit connection loop only, continue to next protocol
         fi
         
-        # Check Heap threshold (if available)
+        # Phase 4.2.1: Check Heap threshold - skip remaining connections, continue to next protocol
         if [[ -n "$heap" ]] && [[ "$heap" != "0.00" ]] && [[ "$heap" != "N/A" ]]; then
           heap_int=${heap%.*}
           if (( heap_int >= 80 )); then
-            log "Server Heap >= 80% (current: ${heap}%). Halting further tests."
-            echo "Server Heap >= 80% (current: ${heap}%). Halting further tests."
-            exit 0
+            log "Server Heap >= 80% (current: ${heap}%). Maximum capacity for ${protocol} ${resolution}: ${last_successful_conn} connections"
+            echo "⚠️  Maximum capacity reached: ${last_successful_conn} connections for ${protocol^^} ${resolution}"
+            MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"
+            log "Skipping remaining connections for ${protocol} ${resolution} (current attempt: ${conn})"
+            break  # Exit connection loop only, continue to next protocol
           fi
         fi
 
         run_single_experiment "$protocol" "$resolution" "$vcodec" "$bitrate" "$conn"
         experiment_status=$?
+        
+        # Phase 4.2.1: Track successful tests (before heap monitor check)
+        if (( experiment_status == 0 )); then
+          last_successful_conn=$conn
+          log "Test completed successfully at ${conn} connections"
+        fi
         
         # Check if heap safety monitor killed the test
         if (( experiment_status == 1 )); then
@@ -946,9 +1076,18 @@ for protocol in "${PROTOCOLS[@]}"; do
         # Phase 1: 30-second cooldown between experiments
         log "Cooldown: waiting 30 seconds for server to stabilize..."
         sleep 30
-      done
-    done
-  done
-done
+      done  # End connections loop
+      
+      # Phase 4.2.1: Extra cooldown if we hit capacity limit for this protocol/resolution
+      if [[ -n "${MAX_CAPACITY[${protocol}_${resolution}]}" ]]; then
+        log "Extra cooldown after reaching capacity limit: waiting 60 seconds for full server recovery..."
+        echo "⏳ Extra cooldown: 60 seconds..."
+        sleep 60
+      fi
+    done  # End protocol loop
+    
+    log "===== Completed Resolution: ${resolution} ====="
+    echo "===== Completed Resolution: ${resolution} ====="
+  done  # End resolution loop
 
 echo "All experiments finished or stopped by CPU/Heap threshold. Results are in $RUNS_DIR"
