@@ -543,13 +543,19 @@ done
 
 ---
 
-## Phase 2: Test Execution Order Restructuring
+## ✅ Phase 2: Test Execution Order Restructuring [COMPLETE]
 **Goal**: Change from protocol-first to resolution-first ordering
+
+**Status**: ✅ **COMPLETE** (2025-10-18)  
+**Time Spent**: ~30 minutes  
+**Complexity**: Low (Simple loop restructuring)
+
+**📄 Summary Document**: [orchestrator/docs/phase2/PHASE_2_COMPLETE.md](phase2/PHASE_2_COMPLETE.md)
 
 ### Tasks
 
 #### 2.1 Reorder Test Loops
-- [ ] Restructure main test loop to:
+- [x] Restructure main test loop to:
   ```bash
   for resolution in "${RESOLUTIONS[@]}"; do
     for protocol in "${PROTOCOLS[@]}"; do
@@ -559,16 +565,17 @@ done
     done
   done
   ```
-- [ ] Update resolution order to: `(360p 720p 1080p 4k)` (lowest to highest)
-- [ ] Remove video codec loop (single codec now)
-- [ ] Remove bitrate loop (single bitrate per resolution)
+- [x] Update resolution order to: `(360p 720p 1080p 4k)` (lowest to highest)
+- [x] Remove video codec loop (single codec now)
+- [x] Remove bitrate loop (single bitrate per resolution)
 
-**File**: `orchestrator/run_orchestration.sh` (lines ~470-520)
+**File**: `orchestrator/run_orchestration.sh` (lines 880-958)
 
 #### 2.2 Update Logging
-- [ ] Update log messages to reflect new order
-- [ ] Log format: `"Starting Resolution: ${resolution}"`
-- [ ] Log format: `"  Protocol: ${protocol}, Connections: ${conn}"`
+- [x] Update log messages to reflect new order
+- [x] Log format: `"===== Starting Resolution: ${resolution} ====="`
+- [x] Log format: `"  Protocol: ${protocol}"`
+- [x] Log format: `"    → Testing: ${protocol}, ${conn} connection(s)"`
 
 ### Testing Phase 2
 ```bash
@@ -594,169 +601,301 @@ done
 
 ---
 
-## Phase 3: Heap Memory Monitoring Implementation
+## ✅ Phase 3: Heap Memory Monitoring Implementation [COMPLETE]
 **Goal**: Add Java heap memory monitoring alongside CPU monitoring
+
+**Status**: ✅ **COMPLETE** (Implemented in Phase 0)  
+**Time Spent**: Included in Phase 0 (~12 hours)  
+**Complexity**: High (Multi-GC support, covered in Phase 0)
+
+**📄 Summary Document**: [orchestrator/docs/phase0/PHASE_0_FINAL_SUMMARY.md](phase0/PHASE_0_FINAL_SUMMARY.md)
+
+**Note**: Phase 3 was completed ahead of schedule as part of Phase 0's comprehensive monitoring infrastructure implementation. All heap monitoring functionality is production-ready and tested.
 
 ### Tasks
 
 #### 3.1 Create Heap Monitoring Function
-- [ ] Create `get_server_heap()` function
-- [ ] Use `jstat` or JMX to query Java heap usage
-- [ ] Return percentage: `(used_heap / max_heap) * 100`
-- [ ] Handle cases where Wowza PID not detected
-- [ ] Add fallback to `jmap` if `jstat` unavailable
+- [x] Create `get_server_heap()` function
+- [x] Use `jcmd` (primary) with fallback to `jstat` and `jmap`
+- [x] Return percentage: `(used_heap / max_heap) * 100`
+- [x] Handle cases where Wowza PID not detected
+- [x] Multi-GC support (Parallel, G1, ZGC, Shenandoah)
 
-**File**: `orchestrator/run_orchestration.sh` (new function after `get_server_cpu()`)
+**File**: `orchestrator/run_orchestration.sh` (lines 395-540)
 
-**Implementation**:
+**Implemented Features**:
+- ✅ `get_server_heap()` function with multi-GC support
+- ✅ Cascading fallback: jcmd → jstat → jmap (emergency only)
+- ✅ Supports Parallel GC, G1GC, ZGC (Generational), Shenandoah
+- ✅ Local AWK processing for reliability
+- ✅ Sudo support for root-owned processes
+- ✅ Wowza Java bin path detection
+- ✅ Production tested on EC2 with ZGC
+
+**Example Output**:
 ```bash
-function get_server_heap() {
-  local heap_raw
-  local wowza_pid
-  
-  # Get Wowza PID
-  wowza_pid=$(ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
-    "ps aux | grep -E '[Ww]owza|java.*com.wowza' | grep -v grep | head -n1 | awk '{print \$2}'" 2>/dev/null || echo "")
-  
-  if [[ -z "$wowza_pid" ]]; then
-    log "WARNING: Could not detect Wowza PID for heap monitoring"
-    echo "0.00"
-    return
-  fi
-  
-  # Use jstat to get heap usage
-  heap_raw=$(ssh -i "$KEY_PATH" $SSH_OPTS "$SSH_USER@$SERVER_IP" \
-    "jstat -gc $wowza_pid | tail -n1 | awk '{used=\$3+\$4+\$6+\$8; max=\$1+\$2; if(max>0) print (used/max)*100; else print 0}'" 2>/dev/null || echo "0.00")
-  
-  echo "$heap_raw"
-}
+[2025-10-18T03:27:02Z] DEBUG: Detected Wowza PID: 1028
+[2025-10-18T03:27:02Z] DEBUG: jcmd output length: 197
+[2025-10-18T03:27:02Z] Server Status: CPU=9.30% | Heap=2.66% | Mem=29.04% | Net=0.00Mbps
 ```
 
 #### 3.2 Enhance Remote Monitoring
-- [ ] Verify `jstat` monitoring is captured during tests
-- [ ] Ensure heap metrics included in `jstat_gc.log`
-- [ ] Add heap summary to `wowza_proc.txt`
+- [x] `jstat` monitoring captured during tests
+- [x] Heap metrics in `remote_monitor.sh` CSV output
+- [x] Background heap safety monitor with real-time status
+- [x] Heap summary in parse_run.py
 
-**File**: `orchestrator/run_orchestration.sh` (`remote_start_monitors()` function)
+**File**: `orchestrator/remote_monitor.sh` (235 lines)
 
-#### 3.3 Update Parser for Heap Metrics
-- [ ] Modify `parse_run.py` to extract heap data from `jstat_gc.log`
-- [ ] Add heap columns to CSV output:
-  - `heap_used_mb`
-  - `heap_max_mb`
-  - `heap_percent`
-  - `peak_heap_percent`
-
-**File**: `orchestrator/parse_run.py`
-
-### Testing Phase 3
-```bash
-# Test 3: Verify heap monitoring
-./run_orchestration.sh --pilot
-
-# Manual checks:
-# 1. Check orchestrator.log for heap percentage readings
-# 2. Verify jstat_gc.log contains heap data
-# 3. Check results.csv for heap columns
-# 4. Confirm heap values are reasonable (0-100%)
+**CSV Format**:
+```csv
+TIMESTAMP,CPU_PCT,HEAP_USED_MB,HEAP_CAPACITY_MB,HEAP_MAX_MB,HEAP_PCT,MEM_PCT,NET_MBPS,WOWZA_PID
 ```
 
-**Success Criteria**:
-- ✅ Heap percentage logged before each test
-- ✅ `jstat_gc.log` captured for each run
-- ✅ CSV contains heap metrics
-- ✅ Heap values are within 0-100% range
-- ✅ Graceful handling when PID not found
+#### 3.3 Update Parser for Heap Metrics
+- [x] Modified `parse_run.py` to extract heap data
+- [x] CSV columns added:
+  - `avg_heap_mb` - Average heap usage during test
+  - `max_heap_mb` - Peak heap usage during test
+  - `mem_rss_mb` - RSS memory in MB (consistent units)
+- [x] Removed: `heap_capacity_mb`, `cpu_per_stream_percent`
+
+**File**: `orchestrator/parse_run.py` (lines 259-347)
+
+### Testing Phase 3 ✅
+All testing completed as part of Phase 0 validation:
+
+**Verified**:
+- ✅ Heap percentage logged before each test (Server Status line)
+- ✅ `remote_monitor.sh` CSV contains heap data
+- ✅ `results.csv` contains avg_heap_mb and max_heap_mb
+- ✅ Heap values are within 0-100% range (tested: 2.66% to 12.67%)
+- ✅ Graceful handling when PID not found (returns N/A)
+- ✅ Background heap safety monitor working (CPU + Heap checks every 10s)
+- ✅ Real-time INFO messages every 10 seconds
+- ✅ Warning and kill logic for 80%+ thresholds
+
+**Success Criteria**: ✅ **ALL MET**
 
 ---
 
-## Phase 4: Adaptive Threshold Stopping Logic
+## 🟡 Phase 4: Adaptive Threshold Stopping Logic [PARTIALLY COMPLETE]
 **Goal**: Implement intelligent stopping when CPU ≥ 80% OR Heap ≥ 80%
+
+**Status**: 🟡 **PARTIALLY COMPLETE** (Core monitoring complete, skip logic needs refinement)  
+**Time Spent**: Included in Phase 0 + bug fixes (~13 hours total)  
+**Complexity**: High (Background monitoring, subprocess fixes, quoting issues)
+
+**📄 Related Documents**: 
+- [orchestrator/docs/phase0/PHASE_0_FINAL_SUMMARY.md](phase0/PHASE_0_FINAL_SUMMARY.md)
+- [docs/fixes/HEAP_MONITOR_IMPROVEMENTS.md](../../docs/fixes/HEAP_MONITOR_IMPROVEMENTS.md)
+
+**What's Complete**:
+1. ✅ `check_server_status()` function - Checks CPU, Heap, Memory, Network before each test
+2. ✅ `start_heap_safety_monitor()` - Background monitor during test execution
+3. ✅ Warning/kill logic - 2 consecutive warnings (CPU or Heap ≥ 80%) → kill test
+
+**What Needs Work**:
+1. ❌ Skip remaining connections and continue to next protocol (currently exits entire sweep)
+2. ❌ Track maximum capacity per protocol/resolution combination
+3. ❌ Protocol/codec selector at orchestrator start (Phase 4.2.2)
 
 ### Tasks
 
 #### 4.1 Implement Dual-Threshold Checking
-- [ ] Create `check_server_thresholds()` function
-- [ ] Check both CPU and Heap before each test
-- [ ] Return status: `PASS`, `CPU_LIMIT`, `HEAP_LIMIT`, or `BOTH_LIMIT`
-- [ ] Log detailed threshold status
+- [x] Create `check_server_status()` function (lines 610-613)
+- [x] Check both CPU and Heap before each test
+- [x] Return format: `CPU|HEAP|MEM|NET`
+- [x] Log detailed threshold status
+- [x] Threshold checking in main loop (lines 906-932)
 
-**File**: `orchestrator/run_orchestration.sh` (new function)
+**File**: `orchestrator/run_orchestration.sh`
 
-**Implementation**:
+**Implemented Features**:
+
+**Pre-Test Threshold Checking** (Lines 906-932):
 ```bash
-function check_server_thresholds() {
-  local cpu=$(get_server_cpu)
-  local heap=$(get_server_heap)
-  
-  cpu=${cpu:-0}
-  heap=${heap:-0}
-  
-  local cpu_int=${cpu%.*}
-  local heap_int=${heap%.*}
-  
-  log "Server thresholds - CPU: ${cpu}%, Heap: ${heap}%"
-  
-  if (( cpu_int >= 80 && heap_int >= 80 )); then
-    echo "BOTH_LIMIT|$cpu|$heap"
-  elif (( cpu_int >= 80 )); then
-    echo "CPU_LIMIT|$cpu|$heap"
-  elif (( heap_int >= 80 )); then
-    echo "HEAP_LIMIT|$cpu|$heap"
-  else
-    echo "PASS|$cpu|$heap"
+# Check server health before each test
+status=$(check_server_status)
+IFS='|' read -r cpu heap mem net <<< "$status"
+
+# Check CPU threshold
+cpu_int=${cpu%.*}
+if (( cpu_int >= 80 )); then
+  log "Server CPU >= 80% (current: ${cpu}%). Halting further tests."
+  exit 0
+fi
+
+# Check Heap threshold
+if [[ -n "$heap" ]] && [[ "$heap" != "0.00" ]] && [[ "$heap" != "N/A" ]]; then
+  heap_int=${heap%.*}
+  if (( heap_int >= 80 )); then
+    log "Server Heap >= 80% (current: ${heap}%). Halting further tests."
+    exit 0
   fi
-}
+fi
 ```
+
+**During-Test Safety Monitor** (Lines 620-755):
+- Background subprocess monitors every 10 seconds
+- Tracks warning count (CPU or Heap ≥ 80%)
+- Kills test after 2 consecutive warnings (10-20 second window)
+- Resets counter if metrics drop below threshold
 
 #### 4.2 Implement Skip Logic
-- [ ] When threshold reached, skip remaining connection levels
-- [ ] Continue to next protocol
-- [ ] Continue to next resolution if all protocols done
-- [ ] Track "maximum capacity" for each protocol/resolution
+- [x] When threshold reached before test (pre-check), exit entire sweep
+- [x] When threshold reached during test, kill test with heap safety monitor
+- [ ] **TODO**: Skip remaining connection counts, continue to next protocol (not exit)
+- [ ] **TODO**: Log maximum achieved connection count before skip
+- [ ] **TODO**: Use `continue 2` to break connections loop, continue protocol loop
+- [x] Heap safety monitor kills FFmpeg processes
+- [x] Clean shutdown with log messages
 
-**File**: `orchestrator/run_orchestration.sh` (main loop)
+**File**: `orchestrator/run_orchestration.sh` (lines 906-948)
 
-#### 4.3 Add State Tracking
-- [ ] Create associative array to track max capacity:
-  ```bash
-  declare -A MAX_CAPACITY
-  # Format: MAX_CAPACITY[protocol_resolution]="connections|cpu|heap"
-  ```
-- [ ] Store last successful test before threshold
-- [ ] Use for summary report
+**Current Behavior**: Tests exit/stop immediately when threshold detected (suitable for pilot mode)
 
-#### 4.4 Update Main Loop Logic
-- [ ] Before each test, call `check_server_thresholds()`
-- [ ] If limit reached:
-  - Log maximum capacity
-  - Store in `MAX_CAPACITY` array
-  - Break from connection loop
-  - Continue to next protocol
-- [ ] Add flags to track if we're skipping
+**Required Behavior for Full Matrix**:
+- If connection count N causes CPU/Heap ≥ 80%:
+  - Log: "Maximum capacity reached at N-1 connections for {protocol} {resolution}"
+  - Skip remaining connections (50, 100, etc.)
+  - Move to next resolution of the same protocol, or if the highest resolution to the next protocol
+  - Example: RTMP 1080p fails at 20 connections → skip 50,100 → test RTSP 1080p starting at 1
 
-**File**: `orchestrator/run_orchestration.sh` (lines ~470-520)
-
-### Testing Phase 4
+**Implementation Strategy**:
 ```bash
-# Test 4a: Verify threshold detection
-# Manually set low threshold for testing (e.g., 40%)
-./run_orchestration.sh --pilot
-
-# Test 4b: Verify skip logic
-# Watch logs to ensure:
-# - Tests stop when threshold reached
-# - Remaining connections skipped
-# - Next protocol/resolution starts
+# In connection loop, after threshold check:
+if (( cpu_int >= 80 || heap_int >= 80 )); then
+  log "Threshold reached. Maximum capacity: ${last_successful_conn} connections"
+  log "Skipping remaining connections for ${protocol} ${resolution}"
+  break  # Exit connection loop only
+fi
+# Continue to next protocol iteration
 ```
 
-**Success Criteria**:
-- ✅ CPU ≥ 80% stops tests
-- ✅ Heap ≥ 80% stops tests
-- ✅ Either threshold stops tests
-- ✅ Skipped tests logged clearly
-- ✅ Maximum capacity recorded
-- ✅ Next protocol/resolution continues
+#### 4.2.2 Add Protocol and Codec Selector (NEW)
+- [ ] **TODO**: Add interactive selector at orchestrator start
+- [ ] Allow user to choose specific protocol(s) to test
+- [ ] Allow user to choose specific codec(s) to test (for future multi-codec support)
+- [ ] Allow user to choose "ALL" for full matrix
+- [ ] Update test matrix arrays based on selection
+
+**File**: `orchestrator/run_orchestration.sh` (lines ~270-290, after pilot mode prompt)
+
+**Implementation Design**:
+```bash
+# After pilot mode prompt, before test sweep
+echo ""
+echo "Protocol Selection:"
+echo "  1) RTMP only"
+echo "  2) RTSP only"
+echo "  3) SRT only"
+echo "  4) RTMP + SRT"
+echo "  5) RTMP + RTSP"
+echo "  6) ALL protocols (RTMP, RTSP, SRT)"
+read -p "Select protocols to test [6]: " PROTO_CHOICE
+PROTO_CHOICE="${PROTO_CHOICE:-6}"
+
+case "$PROTO_CHOICE" in
+  1) PROTOCOLS=(rtmp) ;;
+  2) PROTOCOLS=(rtsp) ;;
+  3) PROTOCOLS=(srt) ;;
+  4) PROTOCOLS=(rtmp srt) ;;
+  5) PROTOCOLS=(rtmp rtsp) ;;
+  6) PROTOCOLS=(rtmp rtsp srt) ;;
+  *) PROTOCOLS=(rtmp rtsp srt) ;;
+esac
+
+log "Selected protocols: ${PROTOCOLS[*]}"
+```
+
+**Benefits**:
+- Test specific protocol without running full matrix
+- Debug single protocol issues
+- Faster targeted testing
+- Useful for comparing protocols side-by-side
+
+**Implementation Status**: ❌ NOT STARTED - Planned for Phase 4.2.2
+
+#### 4.3 Add State Tracking
+- [x] Threshold status tracked in logs
+- [x] Warning counter tracks consecutive violations
+- [x] Kill file created when test terminated: `.heap_monitor_kill_$$`
+- [x] Status file for real-time monitoring: `.heap_monitor_status_$$`
+- [ ] **TODO**: Track last successful connection count before threshold
+- [ ] **TODO**: Add MAX_CAPACITY associative array for summary reports
+- [ ] **TODO**: Store max capacity per protocol/resolution combination
+
+**Partial Implementation**: Basic tracking complete, capacity tracking pending Phase 4.2 fix
+
+**Required State Variables**:
+```bash
+# Track maximum capacity before threshold
+declare -A MAX_CAPACITY
+# Format: MAX_CAPACITY["${protocol}_${resolution}"]="${max_conn}|${cpu}|${heap}"
+
+# Track last successful connection count
+last_successful_conn=0
+
+# In connection loop, track before threshold check:
+if test_passed; then
+  last_successful_conn=$conn
+fi
+
+# When threshold reached:
+MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"
+```
+
+#### 4.4 Update Main Loop Logic  
+- [x] Before each test, call `check_server_status()` (line 909)
+- [x] Parse and validate CPU/Heap values (lines 911-918)
+- [x] Check CPU threshold ≥ 80% → exit (lines 923-927)
+- [x] Check Heap threshold ≥ 80% → exit (lines 930-936)
+- [x] Start heap safety monitor for each test (line 798)
+- [x] Check if monitor killed test → exit (lines 940-945)
+
+**File**: `orchestrator/run_orchestration.sh` (lines 880-958)
+
+### Testing Phase 4 ✅
+Production tested on EC2 Wowza server with multiple pilot runs:
+
+**Test Results**:
+```
+[2025-10-18T03:27:04Z] Server Status: CPU=18.23% | Heap=12.67% | Mem=28.79% | Net=0.00Mbps
+[2025-10-18 03:27:06] INFO: Server CPU: 23.43% | Heap: N/A%  ← Background monitor
+[2025-10-18T03:32:02Z] Server Status: CPU=9.30% | Heap=2.66% | Mem=29.04% | Net=0.00Mbps
+```
+
+**Verified Behaviors**:
+- ✅ Pre-test health check logs all metrics
+- ✅ Background monitor provides INFO updates every 10s
+- ✅ CPU detection working (shows actual percentages)
+- ✅ Heap detection working after jcmd path fix
+- ✅ Warning messages display when threshold approached
+- ✅ Test killed after 2 consecutive warnings
+- ✅ Sweep exits when threshold reached
+
+**Recent Bug Fixes**:
+1. Fixed heap detection in background subprocess (jcmd not in PATH)
+2. Updated warning logic from 30-second sustained to 2 consecutive warnings
+3. Added Wowza Java bin path: `/usr/local/WowzaStreamingEngine/java/bin/jcmd`
+4. Monitors both CPU and Heap (either triggers warning)
+
+**Success Criteria**: 🟡 **PARTIALLY COMPLETE**
+- ✅ CPU ≥ 80% stops tests (pre-check and during-test)
+- ✅ Heap ≥ 80% stops tests (pre-check and during-test)
+- ✅ Either threshold stops tests (OR logic)
+- ✅ Warnings logged with clear messages
+- ✅ Tests killed cleanly (FFmpeg processes terminated)
+- ✅ 10-20 second response time (2 warnings × 10s interval)
+- ❌ **TODO**: Skip remaining connections and continue to next protocol (currently exits)
+- ❌ **TODO**: Track maximum capacity per protocol/resolution
+- ❌ **TODO**: Protocol/codec selector at orchestrator start
+
+**Phase 4 Status**: 🟡 **PARTIALLY COMPLETE**
+- Core threshold detection: ✅ Complete
+- Adaptive stopping logic: ❌ Needs refinement (exits instead of skipping)
+- Protocol selector: ❌ Not implemented
 
 ---
 
