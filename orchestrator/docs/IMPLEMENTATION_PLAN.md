@@ -679,26 +679,26 @@ All testing completed as part of Phase 0 validation:
 
 ---
 
-## 🟡 Phase 4: Adaptive Threshold Stopping Logic [PARTIALLY COMPLETE]
+## ✅ Phase 4: Adaptive Threshold Stopping Logic [COMPLETE]
 **Goal**: Implement intelligent stopping when CPU ≥ 80% OR Heap ≥ 80%
 
-**Status**: 🟡 **PARTIALLY COMPLETE** (Core monitoring complete, skip logic needs refinement)  
-**Time Spent**: Included in Phase 0 + bug fixes (~13 hours total)  
-**Complexity**: High (Background monitoring, subprocess fixes, quoting issues)
+**Status**: ✅ **COMPLETE** (All adaptive stopping features implemented)  
+**Time Spent**: Included in Phase 0 + bug fixes + Phase 4.2 refinements (~15 hours total)  
+**Completion Date**: October 20, 2025  
+**Complexity**: High (Background monitoring, subprocess fixes, skip logic, interactive selectors)
 
 **📄 Related Documents**: 
 - [orchestrator/docs/phase0/PHASE_0_FINAL_SUMMARY.md](phase0/PHASE_0_FINAL_SUMMARY.md)
+- [orchestrator/docs/phase4/PHASE_4_REMAINING_TASKS.md](phase4/PHASE_4_REMAINING_TASKS.md)
 - [docs/fixes/HEAP_MONITOR_IMPROVEMENTS.md](../../docs/fixes/HEAP_MONITOR_IMPROVEMENTS.md)
 
-**What's Complete**:
+**Implemented Features**:
 1. ✅ `check_server_status()` function - Checks CPU, Heap, Memory, Network before each test
 2. ✅ `start_heap_safety_monitor()` - Background monitor during test execution
 3. ✅ Warning/kill logic - 2 consecutive warnings (CPU or Heap ≥ 80%) → kill test
-
-**What Needs Work**:
-1. ❌ Skip remaining connections and continue to next protocol (currently exits entire sweep)
-2. ❌ Track maximum capacity per protocol/resolution combination
-3. ❌ Protocol/codec selector at orchestrator start (Phase 4.2.2)
+4. ✅ **Phase 4.2.1**: Skip logic - break instead of exit, continues to next protocol
+5. ✅ **Phase 4.2.2**: Protocol/codec selector - interactive menu at startup
+6. ✅ **Phase 4.2.3**: Capacity summary report - table and file output
 
 ### Tasks
 
@@ -742,71 +742,70 @@ fi
 - Kills test after 2 consecutive warnings (10-20 second window)
 - Resets counter if metrics drop below threshold
 
-#### 4.2 Implement Skip Logic
-- [x] When threshold reached before test (pre-check), exit entire sweep
+#### 4.2 Implement Skip Logic ✅
+- [x] When threshold reached before test (pre-check), skip remaining connections
 - [x] When threshold reached during test, kill test with heap safety monitor
-- [ ] **TODO**: Skip remaining connection counts, continue to next protocol (not exit)
-- [ ] **TODO**: Log maximum achieved connection count before skip
-- [ ] **TODO**: Use `continue 2` to break connections loop, continue protocol loop
+- [x] **COMPLETED**: Skip remaining connection counts, continue to next protocol (break instead of exit)
+- [x] **COMPLETED**: Log maximum achieved connection count before skip
+- [x] **COMPLETED**: Track last successful connection in `last_successful_conn` variable
+- [x] **COMPLETED**: Store capacity data in `MAX_CAPACITY` associative array
+- [x] **COMPLETED**: Extra 60-second cooldown after hitting capacity limit
 - [x] Heap safety monitor kills FFmpeg processes
 - [x] Clean shutdown with log messages
 
-**File**: `orchestrator/run_orchestration.sh` (lines 906-948)
+**File**: `orchestrator/run_orchestration.sh` (lines 883-976)
 
-**Current Behavior**: Tests exit/stop immediately when threshold detected (suitable for pilot mode)
+**Implemented Behavior (Phase 4.2.1)**:
+- State variables: `last_successful_conn=0` and `declare -A MAX_CAPACITY`
+- Success tracking: Updates `last_successful_conn` after each successful test
+- Threshold logic: Uses `break` to exit connection loop, continues to next protocol
+- Capacity storage: `MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"`
+- Extra cooldown: 60 seconds after hitting capacity limit for full server recovery
 
-**Required Behavior for Full Matrix**:
-- If connection count N causes CPU/Heap ≥ 80%:
-  - Log: "Maximum capacity reached at N-1 connections for {protocol} {resolution}"
-  - Skip remaining connections (50, 100, etc.)
-  - Move to next resolution of the same protocol, or if the highest resolution to the next protocol
-  - Example: RTMP 1080p fails at 20 connections → skip 50,100 → test RTSP 1080p starting at 1
-
-**Implementation Strategy**:
-```bash
-# In connection loop, after threshold check:
-if (( cpu_int >= 80 || heap_int >= 80 )); then
-  log "Threshold reached. Maximum capacity: ${last_successful_conn} connections"
-  log "Skipping remaining connections for ${protocol} ${resolution}"
-  break  # Exit connection loop only
-fi
-# Continue to next protocol iteration
+**Example Flow**:
+```
+RTMP 1080p: 1 conn ✅ → 5 conn ✅ → 10 conn ✅ → 20 conn ⚠️ CPU 82%
+  → Log: "Maximum capacity: 10 connections"
+  → Store: MAX_CAPACITY["rtmp_1080p"]="10|82|45"
+  → Break connection loop
+  → Extra 60s cooldown
+  → Continue to RTSP 1080p: 1 conn...
 ```
 
-#### 4.2.2 Add Protocol and Codec Selector (NEW)
-- [ ] **TODO**: Add interactive selector at orchestrator start
-- [ ] Allow user to choose specific protocol(s) to test
-- [ ] Allow user to choose specific codec(s) to test (for future multi-codec support)
-- [ ] Allow user to choose "ALL" for full matrix
-- [ ] Update test matrix arrays based on selection
+#### 4.2.2 Add Protocol and Codec Selector ✅
+- [x] **COMPLETED**: Interactive protocol selector at orchestrator start
+- [x] **COMPLETED**: 7 protocol options (RTMP only, RTSP only, SRT only, combinations, ALL)
+- [x] **COMPLETED**: 5 codec options (H.264, H.265, VP9, combinations, ALL)
+- [x] **COMPLETED**: Test matrix summary showing total tests and estimated time
+- [x] **COMPLETED**: Default selections (ALL protocols, H.264 only)
 
-**File**: `orchestrator/run_orchestration.sh` (lines ~270-290, after pilot mode prompt)
+**File**: `orchestrator/run_orchestration.sh` (lines 269-379)
 
-**Implementation Design**:
+**Implemented Features**:
 ```bash
-# After pilot mode prompt, before test sweep
-echo ""
-echo "Protocol Selection:"
-echo "  1) RTMP only"
-echo "  2) RTSP only"
-echo "  3) SRT only"
-echo "  4) RTMP + SRT"
-echo "  5) RTMP + RTSP"
-echo "  6) ALL protocols (RTMP, RTSP, SRT)"
-read -p "Select protocols to test [6]: " PROTO_CHOICE
-PROTO_CHOICE="${PROTO_CHOICE:-6}"
+# Protocol Selection Menu
+1) RTMP only
+2) RTSP only
+3) SRT only
+4) RTMP + RTSP
+5) RTMP + SRT
+6) RTSP + SRT
+7) ALL protocols (RTMP + RTSP + SRT)  ← default
 
-case "$PROTO_CHOICE" in
-  1) PROTOCOLS=(rtmp) ;;
-  2) PROTOCOLS=(rtsp) ;;
-  3) PROTOCOLS=(srt) ;;
-  4) PROTOCOLS=(rtmp srt) ;;
-  5) PROTOCOLS=(rtmp rtsp) ;;
-  6) PROTOCOLS=(rtmp rtsp srt) ;;
-  *) PROTOCOLS=(rtmp rtsp srt) ;;
-esac
+# Codec Selection Menu
+1) H.264 only (baseline)  ← default
+2) H.265 only
+3) VP9 only
+4) H.264 + H.265
+5) ALL codecs (H.264 + H.265 + VP9)
 
-log "Selected protocols: ${PROTOCOLS[*]}"
+# Test Matrix Summary Display
+📊 Protocols: 3 (rtmp rtsp srt)
+📊 Resolutions: 4 (360p 720p 1080p 4k)
+📊 Codecs: 1 (h264)
+📊 Connection levels: 6 (1 5 10 20 50 100)
+📊 Total tests: 72
+📊 Estimated time: ~360 minutes (with cooldowns)
 ```
 
 **Benefits**:
@@ -814,21 +813,18 @@ log "Selected protocols: ${PROTOCOLS[*]}"
 - Debug single protocol issues
 - Faster targeted testing
 - Useful for comparing protocols side-by-side
+- Multi-codec support ready for future phases
 
-**Implementation Status**: ❌ NOT STARTED - Planned for Phase 4.2.2
-
-#### 4.3 Add State Tracking
+#### 4.3 Add State Tracking ✅
 - [x] Threshold status tracked in logs
 - [x] Warning counter tracks consecutive violations
 - [x] Kill file created when test terminated: `.heap_monitor_kill_$$`
 - [x] Status file for real-time monitoring: `.heap_monitor_status_$$`
-- [ ] **TODO**: Track last successful connection count before threshold
-- [ ] **TODO**: Add MAX_CAPACITY associative array for summary reports
-- [ ] **TODO**: Store max capacity per protocol/resolution combination
+- [x] **COMPLETED**: Track last successful connection count before threshold
+- [x] **COMPLETED**: MAX_CAPACITY associative array for summary reports
+- [x] **COMPLETED**: Store max capacity per protocol/resolution combination
 
-**Partial Implementation**: Basic tracking complete, capacity tracking pending Phase 4.2 fix
-
-**Required State Variables**:
+**Implemented State Variables (Phase 4.2.1)**:
 ```bash
 # Track maximum capacity before threshold
 declare -A MAX_CAPACITY
@@ -837,13 +833,59 @@ declare -A MAX_CAPACITY
 # Track last successful connection count
 last_successful_conn=0
 
-# In connection loop, track before threshold check:
-if test_passed; then
+# In connection loop, track after successful test:
+if (( experiment_status == 0 )); then
   last_successful_conn=$conn
+  log "Test completed successfully at ${conn} connections"
 fi
 
 # When threshold reached:
-MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"
+if (( cpu_int >= 80 )); then
+  log "⚠️  Server CPU >= 80%... Maximum capacity: ${last_successful_conn} connections"
+  MAX_CAPACITY["${protocol}_${resolution}"]="${last_successful_conn}|${cpu}|${heap}"
+  break  # Exit connection loop, continue to next protocol
+fi
+```
+
+#### 4.2.3 Add Capacity Summary Report ✅
+- [x] **COMPLETED**: `print_capacity_summary()` function
+- [x] **COMPLETED**: Formatted table showing protocol/resolution capacity limits
+- [x] **COMPLETED**: Display max connections, CPU %, Heap % when limit hit
+- [x] **COMPLETED**: Save summary to file in runs/ directory
+- [x] **COMPLETED**: Smart detection (shows "No limits reached" if all tests passed)
+- [x] **COMPLETED**: Sorted output for easy reading
+
+**File**: `orchestrator/run_orchestration.sh` (lines 381-455, 1173)
+
+**Implemented Features**:
+```bash
+function print_capacity_summary() {
+  # Displays formatted table:
+  # PROTOCOL | RESOLUTION | MAX CONNECTIONS | CPU % | HEAP %
+  # Saves to: runs/capacity_summary_YYYYMMDD_HHMMSS.txt
+}
+
+# Called at end of main test loop
+print_capacity_summary
+```
+
+**Example Output**:
+```
+══════════════════════════════════════════════════════════════
+  📊 CAPACITY SUMMARY REPORT (Phase 4.2.3)
+══════════════════════════════════════════════════════════════
+
+⚠️  The following protocol/resolution combinations reached capacity limits:
+
+PROTOCOL        RESOLUTION      MAX CONNECTIONS      CPU %           HEAP %
+=============== =============== ==================== =============== ===============
+RTMP            1080p           10 connections       82%             45%
+RTSP            4k              5 connections        78%             82%
+SRT             1080p           20 connections       85%             52%
+
+══════════════════════════════════════════════════════════════
+
+💾 Capacity summary saved to: runs/capacity_summary_20251020_143022.txt
 ```
 
 #### 4.4 Update Main Loop Logic  
@@ -881,21 +923,34 @@ Production tested on EC2 Wowza server with multiple pilot runs:
 3. Added Wowza Java bin path: `/usr/local/WowzaStreamingEngine/java/bin/jcmd`
 4. Monitors both CPU and Heap (either triggers warning)
 
-**Success Criteria**: 🟡 **PARTIALLY COMPLETE**
+**Phase 4.2 Refinements (October 20, 2025)**:
+1. **Phase 4.2.1**: Fixed skip logic - changed `exit 0` to `break` in threshold checks
+2. **Phase 4.2.1**: Added state tracking - `last_successful_conn` and `MAX_CAPACITY` array
+3. **Phase 4.2.1**: Added extra 60-second cooldown after hitting capacity limit
+4. **Phase 4.2.2**: Added protocol selector menu (7 options: RTMP/RTSP/SRT/combinations/ALL)
+5. **Phase 4.2.2**: Added codec selector menu (5 options: H.264/H.265/VP9/combinations/ALL)
+6. **Phase 4.2.2**: Added test matrix summary with total count and estimated time
+7. **Phase 4.2.3**: Added `print_capacity_summary()` function with table output
+8. **Phase 4.2.3**: Capacity summary saved to `runs/capacity_summary_*.txt`
+
+**Success Criteria**: ✅ **ALL MET**
 - ✅ CPU ≥ 80% stops tests (pre-check and during-test)
 - ✅ Heap ≥ 80% stops tests (pre-check and during-test)
 - ✅ Either threshold stops tests (OR logic)
 - ✅ Warnings logged with clear messages
 - ✅ Tests killed cleanly (FFmpeg processes terminated)
 - ✅ 10-20 second response time (2 warnings × 10s interval)
-- ❌ **TODO**: Skip remaining connections and continue to next protocol (currently exits)
-- ❌ **TODO**: Track maximum capacity per protocol/resolution
-- ❌ **TODO**: Protocol/codec selector at orchestrator start
+- ✅ **COMPLETE**: Skip remaining connections and continue to next protocol (break instead of exit)
+- ✅ **COMPLETE**: Track maximum capacity per protocol/resolution (MAX_CAPACITY array)
+- ✅ **COMPLETE**: Protocol/codec selector at orchestrator start (Phase 4.2.2)
+- ✅ **COMPLETE**: Capacity summary report (Phase 4.2.3)
 
-**Phase 4 Status**: 🟡 **PARTIALLY COMPLETE**
+**Phase 4 Status**: ✅ **COMPLETE**
 - Core threshold detection: ✅ Complete
-- Adaptive stopping logic: ❌ Needs refinement (exits instead of skipping)
-- Protocol selector: ❌ Not implemented
+- Adaptive stopping logic: ✅ Complete (break instead of exit)
+- Protocol selector: ✅ Complete (7 protocol options, 5 codec options)
+- Capacity tracking: ✅ Complete (MAX_CAPACITY array + summary report)
+- State management: ✅ Complete (last_successful_conn tracking)
 
 ---
 

@@ -378,6 +378,78 @@ log "📊 Estimated time: ~$((TOTAL_TESTS * (DURATION_MINUTES + 2))) minutes (wi
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
+# Phase 4.2.3: Capacity Summary Report
+function print_capacity_summary() {
+  echo ""
+  echo "══════════════════════════════════════════════════════════════"
+  echo "  📊 CAPACITY SUMMARY REPORT (Phase 4.2.3)"
+  echo "══════════════════════════════════════════════════════════════"
+  echo ""
+  
+  if [[ ${#MAX_CAPACITY[@]} -eq 0 ]]; then
+    log "✅ No capacity limits reached - all tests completed successfully!"
+    echo "✅ No capacity limits reached - all tests completed successfully!"
+    return 0
+  fi
+  
+  log "⚠️  The following protocol/resolution combinations reached capacity limits:"
+  echo "⚠️  The following protocol/resolution combinations reached capacity limits:"
+  echo ""
+  
+  # Print table header
+  printf "%-15s %-15s %-20s %-15s %-15s\n" "PROTOCOL" "RESOLUTION" "MAX CONNECTIONS" "CPU %" "HEAP %"
+  printf "%-15s %-15s %-20s %-15s %-15s\n" "===============" "===============" "====================" "===============" "==============="
+  
+  # Sort and print capacity data
+  for key in "${!MAX_CAPACITY[@]}"; do
+    # Parse protocol and resolution from key
+    protocol="${key%_*}"
+    resolution="${key#*_}"
+    
+    # Parse capacity data: "connections|cpu|heap"
+    IFS='|' read -r max_conn cpu heap <<< "${MAX_CAPACITY[$key]}"
+    
+    # Format and print row
+    printf "%-15s %-15s %-20s %-15s %-15s\n" \
+      "${protocol^^}" \
+      "$resolution" \
+      "$max_conn connections" \
+      "${cpu}%" \
+      "${heap}%"
+  done | sort
+  
+  echo ""
+  echo "══════════════════════════════════════════════════════════════"
+  echo ""
+  
+  # Save summary to file
+  local summary_file="${RUNS_DIR}/capacity_summary_$(date +%Y%m%d_%H%M%S).txt"
+  {
+    echo "CAPACITY SUMMARY REPORT"
+    echo "Generated: $(date)"
+    echo ""
+    echo "Protocol/Resolution combinations that reached capacity limits:"
+    echo ""
+    printf "%-15s %-15s %-20s %-15s %-15s\n" "PROTOCOL" "RESOLUTION" "MAX CONNECTIONS" "CPU %" "HEAP %"
+    printf "%-15s %-15s %-20s %-15s %-15s\n" "===============" "===============" "====================" "===============" "==============="
+    
+    for key in "${!MAX_CAPACITY[@]}"; do
+      protocol="${key%_*}"
+      resolution="${key#*_}"
+      IFS='|' read -r max_conn cpu heap <<< "${MAX_CAPACITY[$key]}"
+      printf "%-15s %-15s %-20s %-15s %-15s\n" \
+        "${protocol^^}" \
+        "$resolution" \
+        "$max_conn connections" \
+        "${cpu}%" \
+        "${heap}%"
+    done | sort
+  } > "$summary_file"
+  
+  log "💾 Capacity summary saved to: $summary_file"
+  echo "💾 Capacity summary saved to: $summary_file"
+}
+
 function remote_dir_for() {
   local run_id="$1"
   echo "/var/tmp/wlt_runs/${run_id}"
@@ -1089,5 +1161,8 @@ for resolution in "${RESOLUTIONS[@]}"; do
     log "===== Completed Resolution: ${resolution} ====="
     echo "===== Completed Resolution: ${resolution} ====="
   done  # End resolution loop
+
+# Phase 4.2.3: Print capacity summary report
+print_capacity_summary
 
 echo "All experiments finished or stopped by CPU/Heap threshold. Results are in $RUNS_DIR"
